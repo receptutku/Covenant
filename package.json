@@ -12,7 +12,9 @@
     "bootstrap": "tsx scripts/bootstrap.ts",
     "golden": "tsx scripts/golden-scenes.ts",
     "tamper": "tsx scripts/tamper-test.ts",
-    "e2e:sale": "tsx scripts/e2e-sale.ts"
+    "e2e:sale": "tsx scripts/e2e-sale.ts",
+    "e2e:rental": "tsx scripts/e2e-rental.ts",
+    "dev:noworld": "WORLD_RP_ID= WORLD_SIGNING_KEY= next dev -p 3002"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",
