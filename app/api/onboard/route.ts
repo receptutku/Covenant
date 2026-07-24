@@ -22,7 +22,7 @@ export const POST = handler(async (request) => {
   const verified = await verifyWorldProof('onboard-seller', body.proof)
   // Burn the nullifier only after verification succeeds — otherwise a forged proof could
   // be used to lock a real user out of onboarding.
-  consumeProofOnce('onboard-seller', verified.nullifierHash)
+  consumeProofOnce('onboard-seller', verified.nullifier)
 
   const session = issueSellerSession()
 

@@ -1,4 +1,4 @@
-CONTRACT-VERSION: 1
+CONTRACT-VERSION: 3
 
 # PPREV API Contract
 
@@ -366,10 +366,28 @@ Allowed `action` values: `onboard-seller`, `verify-buyer`, `verify-tenant`.
 **Response 200**
 
 ```json
-{ "appId": "app_staging_...", "action": "verify-buyer", "signal": "...", "signature": "..." }
+{
+  "appId": "app_50e89a...",
+  "rpId": "rp_a8ab42...",
+  "action": "verify-buyer",
+  "environment": "staging",
+  "signal": "PROP-002:0.0.654321",
+  "rpContext": {
+    "sig": "0x...",
+    "nonce": "0x...",
+    "created_at": 1784927773,
+    "expires_at": 1784928073
+  }
+}
 ```
 
-**Errors:** `INVALID_INPUT` (400)
+> This is **World ID 4.0**. The app now has three identifiers — `app_id`, `rp_id` and a
+> `signing_key` — and the signing key never leaves the server. `rpContext` is valid for
+> 300 seconds, so a captured context cannot be reused indefinitely.
+>
+> Pass `appId`, `action`, `environment` and `rpContext` straight into IDKit.
+
+**Errors:** `INVALID_INPUT` (400 — unknown action), `INTERNAL_ERROR` (500 — World not configured)
 
 ---
 
@@ -434,6 +452,7 @@ property's real `tokenId` → `associate` → `grantKyc`.
   "amount": 100,
   "from": "0.0.1001",
   "to": "0.0.654321",
+  "mode": "primary",
   "transactionId": "0.0.1@169...",
   "assessedCustomFees": [
     { "amount": 2, "tokenId": "0.0.222333", "collectorAccountId": "0.0.1001" }
@@ -444,6 +463,15 @@ property's real `tokenId` → `associate` → `grantKyc`.
 
 On a primary transfer `assessedCustomFees` is empty (treasury exemption). On a secondary
 transfer it is `amount: 2`.
+
+`buyerAccountId` is required for `primary` only. In `secondary` and `nokyc` the parties are
+fixed demo accounts, because those are scripted scenes: the fee scene needs a holder who is
+not the treasury, and the rejection scene needs an account that is associated but
+deliberately un-KYC'd.
+
+> Run `POST /api/seed` before the secondary scene. Each run permanently moves shares from
+> buyer1 to buyer2, so seed tops buyer1 back up; without it the second rehearsal fails with
+> an insufficient-balance error.
 
 **Response 422 (nokyc — THE GOLDEN MOMENT)**
 

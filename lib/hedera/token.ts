@@ -1,4 +1,5 @@
 import {
+  AccountBalanceQuery,
   AccountId,
   Client,
   CustomFractionalFee,
@@ -256,7 +257,28 @@ function mapTransferError(error: unknown): unknown {
       { hederaStatus: Status.TokenNotAssociatedToAccount.toString() },
     )
   }
+  if (hasStatus(error, Status.InsufficientTokenBalance)) {
+    // Mapped explicitly so a repeated demo run surfaces "you asked for more shares than the
+    // sender holds" rather than a bare INTERNAL_ERROR that looks like a crash on stage.
+    return new ApiError(
+      'INVALID_INPUT',
+      'The sending account does not hold enough shares for this transfer.',
+      { hederaStatus: Status.InsufficientTokenBalance.toString() },
+    )
+  }
   return error
+}
+
+/** Share balance for an account, or 0 when the token is not held at all. */
+export async function tokenBalance(
+  tokenId: string,
+  accountId: AccountId | string,
+  client: Client = getClient(),
+): Promise<number> {
+  const balance = await new AccountBalanceQuery()
+    .setAccountId(typeof accountId === 'string' ? AccountId.fromString(accountId) : accountId)
+    .execute(client)
+  return balance.tokens?.get(tokenId)?.toNumber() ?? 0
 }
 
 function hasStatus(error: unknown, status: Status): boolean {

@@ -1,7 +1,7 @@
 import { assertDevelopmentOnly, handler, jsonResponse } from '@/lib/api'
 import { ApiError } from '@/lib/errors'
-import { getDemoAccount } from '@/lib/hedera/client'
-import { associateToken, grantKyc } from '@/lib/hedera/token'
+import { getDemoAccount, getOperator } from '@/lib/hedera/client'
+import { associateToken, grantKyc, tokenBalance, transferShares } from '@/lib/hedera/token'
 import { putProperty } from '@/lib/store'
 import type { Property } from '@/lib/types'
 
@@ -26,6 +26,9 @@ import type { Property } from '@/lib/types'
  * `ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN` to `TOKEN_NOT_ASSOCIATED_TO_ACCOUNT` — a different,
  * far weaker story.
  */
+/** Shares buyer1 must hold for the secondary-transfer scene to run. */
+const SECONDARY_SCENE_SHARES = 100
+
 export const POST = handler(async () => {
   assertDevelopmentOnly()
   const startedAt = Date.now()
@@ -50,6 +53,19 @@ export const POST = handler(async () => {
   await grantKycIfNeeded(tokenId, buyer1.accountId.toString())
   await grantKycIfNeeded(tokenId, buyer2.accountId.toString())
   // nokyc is intentionally left without a KYC grant.
+
+  // Top buyer1 back up so the secondary-market fee scene works on every rehearsal.
+  // Each run moves shares from buyer1 to buyer2 permanently, so without this the second
+  // run of the demo dies with INSUFFICIENT_TOKEN_BALANCE — on stage, mid-sentence.
+  const buyer1Shares = await tokenBalance(tokenId, buyer1.accountId)
+  if (buyer1Shares < SECONDARY_SCENE_SHARES) {
+    await transferShares({
+      tokenId,
+      from: getOperator(),
+      to: buyer1.accountId,
+      amount: SECONDARY_SCENE_SHARES - buyer1Shares,
+    })
+  }
 
   const now = new Date().toISOString()
   const seeded: Property = {

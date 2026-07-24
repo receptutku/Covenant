@@ -1,101 +1,170 @@
 import { createHash } from 'node:crypto'
+import { signRequest } from '@worldcoin/idkit-server'
 import { ApiError } from '../errors'
 
 /**
- * Server-side verification of World proofs.
+ * Server-side World ID 4.0 integration.
  *
- * The frontend's `success` flag is never trusted. A client can set any boolean it likes,
- * so the proof is always re-verified here before it grants a session or a KYC grant.
+ * Two responsibilities:
+ *   1. Mint the RP signature IDKit needs before it will produce a proof. This proves the
+ *      request originated from us and bounds it in time, so a proof cannot be farmed from
+ *      one context and replayed into another.
+ *   2. Re-verify the returned proof against World's backend.
  *
- * The raw proof is never logged, echoed back, or persisted. Only the nullifier hash
- * leaves this module, and only so the caller can fold it into a keyed replay digest
- * (see `lib/world/session.ts`) — it is not stored in its raw form either.
+ * The frontend's `success` flag is never trusted — a client can set any boolean it likes.
+ * The proof is always re-verified here before it grants a session or a KYC grant.
+ *
+ * The raw proof is never logged, echoed back, or persisted. Only the nullifier leaves this
+ * module, and only so the caller can fold it into a keyed replay digest (see `session.ts`).
+ * It is not stored in raw form either.
  */
 
 export type WorldAction = 'onboard-seller' | 'verify-buyer' | 'verify-tenant'
 
+/**
+ * Whitelist of actions we are willing to sign for.
+ *
+ * `verify-tenant` is deliberately separate from `verify-buyer`. A nullifier is derived
+ * from (identity, app, action), so sharing an action between the two flows would mean one
+ * person cannot be both a buyer and a tenant — their first proof would burn the nullifier
+ * for the other. Separate actions give each flow its own namespace.
+ */
+export const WORLD_ACTIONS: readonly WorldAction[] = [
+  'onboard-seller',
+  'verify-buyer',
+  'verify-tenant',
+] as const
+
+export function isWorldAction(value: string): value is WorldAction {
+  return (WORLD_ACTIONS as readonly string[]).includes(value)
+}
+
 export type VerifiedProof = {
   /** Used solely to derive a private replay digest; never stored or returned as-is. */
-  nullifierHash: string
-  /** True when a real World backend verified this, false in the offline dev path. */
+  nullifier: string
+  /** True when World's backend verified this; false only on the offline dev path. */
   verifiedByWorld: boolean
 }
 
 export function isWorldConfigured(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_WORLD_APP_ID?.trim() && process.env.WORLD_RP_SECRET?.trim())
+  return Boolean(process.env.WORLD_RP_ID?.trim() && process.env.WORLD_SIGNING_KEY?.trim())
 }
 
-export function allowedActions(): Record<WorldAction, string> {
-  return {
-    'onboard-seller': process.env.WORLD_ACTION_SELLER ?? 'onboard-seller',
-    'verify-buyer': process.env.WORLD_ACTION_BUYER ?? 'verify-buyer',
-    'verify-tenant': process.env.WORLD_ACTION_TENANT ?? 'verify-tenant',
-  }
+function verifyUrl(): string {
+  const rpId = process.env.WORLD_RP_ID!.trim()
+  return `https://developer.world.org/api/v4/verify/${rpId}`
 }
 
 /**
- * Extracts the nullifier from an IDKit payload.
+ * Produces the RP context IDKit needs to start a verification.
  *
- * IDKit has shipped this field under a couple of names across versions, so we accept the
- * known spellings rather than pinning one and breaking on an SDK bump.
+ * The signature covers a nonce and a validity window (default 300 s), so a captured
+ * context cannot be reused indefinitely. The signing key never leaves the server.
  */
-function readNullifier(proof: Record<string, unknown>): string | null {
-  for (const key of ['nullifier_hash', 'nullifierHash', 'nullifier']) {
-    const value = proof[key]
-    if (typeof value === 'string' && value.length > 0) return value
+export function createRpContext(action: WorldAction) {
+  if (!isWorldConfigured()) {
+    throw new ApiError(
+      'INTERNAL_ERROR',
+      'World is not configured on the server (WORLD_RP_ID / WORLD_SIGNING_KEY).',
+    )
   }
-  return null
+
+  const signature = signRequest({
+    signingKeyHex: process.env.WORLD_SIGNING_KEY!.trim(),
+    action,
+    ttl: 300,
+  })
+
+  return {
+    appId: process.env.NEXT_PUBLIC_WORLD_APP_ID?.trim() ?? '',
+    rpId: process.env.WORLD_RP_ID!.trim(),
+    action,
+    environment: worldEnvironment(),
+    rpContext: {
+      sig: signature.sig,
+      nonce: signature.nonce,
+      created_at: signature.createdAt,
+      expires_at: signature.expiresAt,
+    },
+  }
 }
 
 /**
- * Verifies a proof against World's backend.
+ * Staging routes to the World simulator, which is what we test against until beta access
+ * for the real credential checks lands.
+ */
+function worldEnvironment(): 'staging' | 'production' {
+  return process.env.WORLD_ENVIRONMENT === 'production' ? 'production' : 'staging'
+}
+
+type VerifyResponse = {
+  success?: boolean
+  nullifier?: string
+  action?: string
+  code?: string
+  detail?: string
+}
+
+/**
+ * Verifies an IDKit payload against World.
  *
- * DEV FALLBACK: when the World app is not configured yet, we do not silently pretend the
- * proof is valid. We derive a stable pseudo-nullifier from the payload so that replay
- * protection still behaves correctly end-to-end, mark the result as unverified, and warn
- * loudly on the server console. This keeps the rest of the pipeline testable before the
- * World credentials exist, without ever letting an unverified proof masquerade as a
- * verified one in the returned data.
+ * DEV FALLBACK: when World is not configured we do not pretend the proof is valid. A
+ * stable pseudo-nullifier is derived from the payload so replay protection still behaves
+ * correctly end to end, the result is marked `verifiedByWorld: false`, and the server logs
+ * a loud warning. This keeps the pipeline testable without ever letting an unverified
+ * proof masquerade as a verified one.
  */
 export async function verifyWorldProof(
   action: WorldAction,
   proof: Record<string, unknown>,
 ): Promise<VerifiedProof> {
-  const nullifierHash = readNullifier(proof)
-
   if (!isWorldConfigured()) {
     console.warn(
-      `[world] App not configured — "${action}" proof accepted WITHOUT verification (development only).`,
+      `[world] Not configured — "${action}" proof accepted WITHOUT verification (development only).`,
     )
     return {
-      nullifierHash:
-        nullifierHash ??
-        createHash('sha256').update(JSON.stringify(proof)).digest('hex'),
+      nullifier: createHash('sha256').update(JSON.stringify(proof)).digest('hex'),
       verifiedByWorld: false,
     }
   }
 
-  if (!nullifierHash) {
-    throw new ApiError('WORLD_PROOF_INVALID', 'The World proof is missing a nullifier hash.')
+  let response: Response
+  try {
+    response = await fetch(verifyUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // The IDKit payload is forwarded as-is: it already carries protocol_version, nonce,
+      // action and the responses array in the shape the verifier expects.
+      body: JSON.stringify({ ...proof, environment: worldEnvironment() }),
+    })
+  } catch (error) {
+    console.error(`[world] Could not reach the verifier for "${action}":`, error)
+    throw new ApiError('WORLD_PROOF_INVALID', 'Could not reach World to verify this proof.')
   }
 
-  const appId = process.env.NEXT_PUBLIC_WORLD_APP_ID!.trim()
-  const response = await fetch(`https://developer.worldcoin.org/api/v2/verify/${appId}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.WORLD_RP_SECRET!.trim()}`,
-    },
-    body: JSON.stringify({ ...proof, action: allowedActions()[action] }),
-  })
+  const body = (await response.json().catch(() => ({}))) as VerifyResponse
 
-  if (!response.ok) {
-    // The body may describe why verification failed; it is useful on the server but must
-    // not reach the client, since it can echo proof internals back to the caller.
-    const detail = await response.text().catch(() => '')
-    console.error(`[world] Verification failed for "${action}" (${response.status}):`, detail)
+  if (!response.ok || body.success !== true) {
+    // The body explains why verification failed. It is useful on the server but must not
+    // reach the client, since it can echo proof internals back to the caller.
+    console.error(
+      `[world] Verification failed for "${action}" (${response.status}):`,
+      body.code ?? '',
+      body.detail ?? '',
+    )
     throw new ApiError('WORLD_PROOF_INVALID', 'World could not verify this proof.')
   }
 
-  return { nullifierHash, verifiedByWorld: true }
+  if (!body.nullifier) {
+    throw new ApiError('WORLD_PROOF_INVALID', 'World returned no nullifier for this proof.')
+  }
+
+  // The action is bound into the nullifier, but check it explicitly: accepting a proof
+  // minted for a different action would let a seller-onboarding proof unlock buyer KYC.
+  if (body.action && body.action !== action) {
+    console.error(`[world] Action mismatch: expected "${action}", proof carries "${body.action}".`)
+    throw new ApiError('WORLD_PROOF_INVALID', 'This proof was issued for a different action.')
+  }
+
+  return { nullifier: body.nullifier, verifiedByWorld: true }
 }
