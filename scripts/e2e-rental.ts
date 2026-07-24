@@ -234,6 +234,26 @@ async function main() {
     `tenant received MORE than the deposit (${received.toFixed(2)} ℏ > ${DEPOSIT} ℏ) — the penalty is real`,
   )
 
+  // ── Audit trail ────────────────────────────────────────────────────────────
+  //
+  // Read the timeline back from Mirror rather than trusting the API responses above.
+  // This exists because a payload-guard false positive once dropped RENTAL_APPLICATION
+  // silently: every endpoint returned 200, and the missing step only showed up in the
+  // timeline. Asserting on the public record catches that class of bug.
+  console.log('\nAUDIT — timeline read back from Mirror Node')
+  const audit = await call(`/api/audit?propertyId=${PROPERTY_ID}`)
+  const seen = new Set((audit.body.events as { eventType: string }[]).map((e) => e.eventType))
+
+  for (const expected of [
+    'RENTAL_LISTED',
+    'RENTAL_APPLICATION',
+    'RENTAL_ENGAGED',
+    'RENTAL_SETTLED',
+    'RENTAL_EXPIRED',
+  ]) {
+    ok(seen.has(expected), `${expected} present on-chain`)
+  }
+
   closeClient()
 
   console.log(`\n${'━'.repeat(70)}`)

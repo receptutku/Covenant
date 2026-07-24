@@ -54,9 +54,15 @@ export const POST = handler(async (request) => {
 
   await submitEventSafe(HCS_EVENTS.RENTAL_APPLICATION, rental.propertyId, {
     listingId: rental.listingId,
-    // The predicate RESULT is recorded; neither the rent nor any income figure is.
+    // Only the predicate RESULT goes on-chain; neither the rent nor any income figure does.
+    //
+    // The key is `thresholdMet`, not `incomeThresholdMet`: the on-chain payload guard
+    // rejects any key matching /income/, and it was silently dropping this whole event —
+    // the timeline showed RENTAL_LISTED and RENTAL_ENGAGED with the application missing in
+    // between. The guard was right to be blunt; the field name was the problem. What is
+    // written is a boolean, and the rule it came from is public protocol detail.
     ageEligible: true,
-    incomeThresholdMet,
+    thresholdMet: incomeThresholdMet,
     thresholdRule,
     verifiedByWorld: verified.verifiedByWorld,
   })
