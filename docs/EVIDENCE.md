@@ -93,15 +93,45 @@ A property tokenized through the live HTTP flow: [`0.0.9734945`](https://hashsca
 
 ---
 
-## Pending evidence
+## ENS — live protocol config discovery (Sepolia)
 
-The following will be added to this table as the corresponding phases land:
+`pprevlisbon.eth` is registered on the ENSv2 alpha and resolves to our config wallet.
+Per-property config lives in text records under subname nodes — written **programmatically**
+(one multicall per property, `npm run ens:write`), never through a UI. Resolution works
+from plain viem via the v2 UniversalResolver, so anyone can verify with a script.
 
-- [ ] Live ENS config resolution — Sepolia (R6)
-- [ ] Mirror Node audit timeline (R6)
-- [ ] Rental escrow HBAR lock (R6.5)
-- [ ] Rental settlement — clean refund (R6.5)
-- [ ] Rental expiration — refund + landlord slash (R6.5)
+| Name | Mode | Records written (tx) |
+|---|---|---|
+| `prop-001.pprevlisbon.eth` | SALE (seed token) | [tx](https://sepolia.etherscan.io/tx/0x2a550dc0c790cf4584e6cd874ce1cdf24a1fd1305532d109909b70a22440d87b) |
+| `prop-002.pprevlisbon.eth` | SALE (live flow) | [tx](https://sepolia.etherscan.io/tx/0xd2dba9110f2834a059327c8f6c1496a6ff5a1fa389976a5f7851dbf7dca6d50c) |
+| `prop-003.pprevlisbon.eth` | RENTAL (escrow, no token by design) | [tx](https://sepolia.etherscan.io/tx/0xd87377a6b2805373800985c576af5cbcd2a3a7ab0164d841c6d9cb86394f2d0f) |
+
+No subname registration transactions exist — v2 resolution walks up to the resolver
+covering the longest suffix, so the subname nodes resolve through the parent's resolver.
+`/api/ens-read` validates a **different required field set per mode** and falls back to
+env values (reported honestly as `source: "env-fallback"`) if the alpha deployment or the
+RPC is unreachable.
+
+## Mirror Node audit timeline
+
+`GET /api/audit` serves the event timeline **from Mirror Node**, not from server memory —
+every entry is independently verifiable:
+[topic messages on Mirror](https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.9734777/messages)
+
+## Rental escrow (real HBAR, both settlement paths)
+
+`npm run e2e:rental` — 25 assertions against consensus-node balances:
+
+| Path | Evidence | Link |
+|---|---|---|
+| Escrow lock | 5 ℏ left the tenant | [tx](https://hashscan.io/testnet/transaction/0.0.9695718@1784929036.599075124) |
+| **Settle** | full 5 ℏ refunded to the tenant, zero slash | [tx](https://hashscan.io/testnet/transaction/0.0.9695718@1784929042.955511233) |
+| **Expire** | tenant received **5.5 ℏ** — deposit plus a 10% penalty drawn from the landlord | [tx](https://hashscan.io/testnet/transaction/0.0.9695718@1784929067.575545918) |
+
+Early expire is refused (`LOCK_NOT_EXPIRED`), late settle is refused (`LOCK_EXPIRED`),
+and expire itself is **permissionless** — an escrow only the counterparty can open is not
+an escrow. All five rental events (`RENTAL_LISTED/APPLICATION/ENGAGED/SETTLED/EXPIRED`)
+are asserted present on-chain via Mirror.
 
 ---
 
