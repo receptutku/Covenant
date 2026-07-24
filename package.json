@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "accounts:create": "tsx scripts/create-accounts.ts",
     "bootstrap": "tsx scripts/bootstrap.ts",
-    "golden": "tsx scripts/golden-scenes.ts"
+    "golden": "tsx scripts/golden-scenes.ts",
+    "tamper": "tsx scripts/tamper-test.ts",
+    "e2e:sale": "tsx scripts/e2e-sale.ts"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",

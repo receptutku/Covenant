@@ -11,15 +11,17 @@ import {
 } from '../lib/hedera/token'
 
 /**
- * R1 çıkış kriteri: üç Hedera "altın sahnesi" — World ve UI olmadan, saf zincir kanıtı.
+ * R1 exit criterion: the three Hedera "golden scenes" — pure on-chain proof, without World
+ * or the UI.
  *
- *   1. Primary   operator → buyer1   başarılı, fee YOK (treasury muaf)
- *   2. Secondary buyer1  → buyer2    başarılı, fee = 2 (%2 fractional, inclusive)
- *   3. No-KYC    operator → nokyc    ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN ile RED
+ *   1. Primary   operator → buyer1   succeeds, NO fee (treasury is exempt)
+ *   2. Secondary buyer1  → buyer2    succeeds, fee = 2 (2% fractional, inclusive)
+ *   3. No-KYC    operator → nokyc    REJECTED with ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN
  *
- * 3. sahne için kritik incelik: nokyc hesabı token'a ASSOCIATE EDİLİR ama KYC ALMAZ.
- * Associate atlanırsa hata `TOKEN_NOT_ASSOCIATED_TO_ACCOUNT` olur — bu yanlış hikâye:
- * "KYC olmadan transfer edemezsin" değil, "token'ı hiç kabul etmemiş" demektir.
+ * The subtle but critical detail for scene 3: the nokyc account IS ASSOCIATED with the token
+ * but is NEVER GRANTED KYC. Skipping the association would yield
+ * `TOKEN_NOT_ASSOCIATED_TO_ACCOUNT`, which tells the wrong story: not "you cannot transfer
+ * without KYC" but "the account never opted into the token at all".
  */
 
 const TRANSFER_AMOUNT = 100
@@ -39,17 +41,17 @@ async function main() {
 
   await withClient(async (client) => {
     // ── Token ────────────────────────────────────────────────────────────────
-    console.log('▶ Token oluşturuluyor…')
+    console.log('▶ Creating token…')
     const token = await createPropertyToken(
       { propertyId: 'PROP-001', displayName: 'Alfama Seed', tokenSymbol: 'PPRV1' },
       client,
     )
-    console.log(`  ✅ tokenId=${token.tokenId}  supply=${token.totalSupply}  fee=%2 (min 1)`)
+    console.log(`  ✅ tokenId=${token.tokenId}  supply=${token.totalSupply}  fee=2% (min 1)`)
     console.log(`     ${token.hashscanUrl}\n`)
     evidence.push(`| HTS property token (PROP-001) | \`${token.tokenId}\` | ${token.hashscanUrl} |`)
 
     // ── Association + KYC ────────────────────────────────────────────────────
-    console.log('▶ Association ve KYC ayarlanıyor…')
+    console.log('▶ Setting up association and KYC…')
     for (const [name, account] of [
       ['buyer1', buyer1],
       ['buyer2', buyer2],
@@ -57,32 +59,32 @@ async function main() {
     ] as const) {
       const result = await associateToken(token.tokenId, account, client)
       console.log(
-        `  associate ${name.padEnd(6)} ${result.alreadyAssociated ? '(zaten bağlı)' : '✅'}`,
+        `  associate ${name.padEnd(6)} ${result.alreadyAssociated ? '(already associated)' : '✅'}`,
       )
     }
 
-    // nokyc BİLEREK atlanıyor — 3. sahnenin doğru hatayı vermesi buna bağlı.
+    // nokyc is skipped ON PURPOSE — scene 3 only produces the right error because of this.
     await grantKyc(token.tokenId, buyer1.accountId, client)
     console.log('  grantKyc  buyer1 ✅')
     await grantKyc(token.tokenId, buyer2.accountId, client)
     console.log('  grantKyc  buyer2 ✅')
-    console.log('  grantKyc  nokyc  ⛔ bilerek verilmedi\n')
+    console.log('  grantKyc  nokyc  ⛔ withheld on purpose\n')
 
-    // ── SAHNE 1: primary transfer, fee yok ───────────────────────────────────
-    console.log('▶ SAHNE 1 — primary transfer (operator → buyer1)')
+    // ── SCENE 1: primary transfer, no fee ────────────────────────────────────
+    console.log('▶ SCENE 1 — primary transfer (operator → buyer1)')
     const primary = await transferShares(
       { tokenId: token.tokenId, from: operator, to: buyer1.accountId, amount: TRANSFER_AMOUNT },
       client,
     )
     const primaryFees = primary.assessedCustomFees
-    console.log(`  ✅ ${TRANSFER_AMOUNT} hisse transfer edildi`)
-    console.log(`     kesilen fee: ${primaryFees.length === 0 ? 'YOK (treasury muaf) ✅' : JSON.stringify(primaryFees)}`)
+    console.log(`  ✅ ${TRANSFER_AMOUNT} shares transferred`)
+    console.log(`     fee charged: ${primaryFees.length === 0 ? 'NONE (treasury is exempt) ✅' : JSON.stringify(primaryFees)}`)
     console.log(`     ${primary.hashscanUrl}\n`)
-    assert(primaryFees.length === 0, 'Primary transferde fee kesilmemeliydi')
-    evidence.push(`| Primary transfer (fee yok) | operator → buyer1, ${TRANSFER_AMOUNT} hisse | ${primary.hashscanUrl} |`)
+    assert(primaryFees.length === 0, 'No fee should have been charged on the primary transfer')
+    evidence.push(`| Primary transfer (no fee) | operator → buyer1, ${TRANSFER_AMOUNT} shares | ${primary.hashscanUrl} |`)
 
-    // ── SAHNE 2: secondary transfer, fee = 2 ─────────────────────────────────
-    console.log('▶ SAHNE 2 — secondary transfer (buyer1 → buyer2)')
+    // ── SCENE 2: secondary transfer, fee = 2 ─────────────────────────────────
+    console.log('▶ SCENE 2 — secondary transfer (buyer1 → buyer2)')
     const before2 = await tokenBalance(client, buyer2.accountId.toString(), token.tokenId)
     const secondary = await transferShares(
       { tokenId: token.tokenId, from: buyer1, to: buyer2.accountId, amount: TRANSFER_AMOUNT },
@@ -91,16 +93,16 @@ async function main() {
     const after2 = await tokenBalance(client, buyer2.accountId.toString(), token.tokenId)
     const feeAmount = secondary.assessedCustomFees[0]?.amount ?? 0
 
-    console.log(`  ✅ ${TRANSFER_AMOUNT} hisse gönderildi`)
-    console.log(`     kesilen fee : ${feeAmount}`)
-    console.log(`     buyer2 aldı : ${after2 - before2} hisse (${TRANSFER_AMOUNT} − ${feeAmount})`)
+    console.log(`  ✅ ${TRANSFER_AMOUNT} shares sent`)
+    console.log(`     fee charged    : ${feeAmount}`)
+    console.log(`     buyer2 received: ${after2 - before2} shares (${TRANSFER_AMOUNT} − ${feeAmount})`)
     console.log(`     ${secondary.hashscanUrl}\n`)
-    assert(feeAmount === 2, `Secondary transferde fee 2 olmalıydı, ${feeAmount} geldi`)
-    assert(after2 - before2 === 98, `buyer2 98 hisse almalıydı, ${after2 - before2} aldı`)
-    evidence.push(`| Secondary transfer + %2 fee | buyer1 → buyer2, fee=${feeAmount}, alıcı 98 | ${secondary.hashscanUrl} |`)
+    assert(feeAmount === 2, `The fee on the secondary transfer should have been 2, got ${feeAmount}`)
+    assert(after2 - before2 === 98, `buyer2 should have received 98 shares, got ${after2 - before2}`)
+    evidence.push(`| Secondary transfer + 2% fee | buyer1 → buyer2, fee=${feeAmount}, receiver gets 98 | ${secondary.hashscanUrl} |`)
 
-    // ── SAHNE 3: KYC'siz transfer ağ seviyesinde reddedilir ──────────────────
-    console.log('▶ SAHNE 3 — KYC verilmemiş hesaba transfer (operator → nokyc)')
+    // ── SCENE 3: KYC-less transfer rejected at network level ─────────────────
+    console.log('▶ SCENE 3 — transfer to an account without KYC (operator → nokyc)')
     let rejected = false
     try {
       await transferShares(
@@ -110,30 +112,30 @@ async function main() {
     } catch (error) {
       if (error instanceof ApiError && error.code === 'KYC_DENIED') {
         rejected = true
-        console.log(`  ✅ REDDEDİLDİ — code=${error.code}`)
+        console.log(`  ✅ REJECTED — code=${error.code}`)
         console.log(`     hederaStatus=${error.extra.hederaStatus}`)
-        console.log('     Bu red uygulama kuralı değil, Hedera ağ seviyesi.\n')
+        console.log('     This rejection is not an application rule — it comes from the Hedera network itself.\n')
       } else {
         throw error
       }
     }
-    assert(rejected, 'nokyc transferi reddedilmeliydi ama geçti')
+    assert(rejected, 'The nokyc transfer should have been rejected but it went through')
     evidence.push(
-      `| KYC reddi (ağ seviyesi) | operator → nokyc, \`ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN\` | ${hashscanUrl('account', nokyc.accountId.toString())} |`,
+      `| KYC rejection (network level) | operator → nokyc, \`ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN\` | ${hashscanUrl('account', nokyc.accountId.toString())} |`,
     )
 
-    // Seed token'ı sakla — /api/seed PROP-001'i bununla kuracak.
+    // Persist the seed token — /api/seed will set up PROP-001 with it.
     persistSeedTokenId(token.tokenId)
   })
 
   console.log('━'.repeat(70))
-  console.log('✅ ÜÇ ALTIN SAHNE DE GEÇTİ\n')
-  console.log('docs/EVIDENCE.md için satırlar:\n')
+  console.log('✅ ALL THREE GOLDEN SCENES PASSED\n')
+  console.log('Rows for docs/EVIDENCE.md:\n')
   for (const line of evidence) console.log(line)
 }
 
 function assert(condition: boolean, message: string): asserts condition {
-  if (!condition) throw new Error(`Doğrulama başarısız: ${message}`)
+  if (!condition) throw new Error(`Assertion failed: ${message}`)
 }
 
 function persistSeedTokenId(tokenId: string) {
@@ -143,6 +145,6 @@ function persistSeedTokenId(tokenId: string) {
 }
 
 main().catch((error) => {
-  console.error('\n❌ Altın sahne başarısız:', error instanceof Error ? error.message : error)
+  console.error('\n❌ Golden scene failed:', error instanceof Error ? error.message : error)
   process.exit(1)
 })

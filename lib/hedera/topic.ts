@@ -8,15 +8,15 @@ import { recordTransaction } from '../store'
 import type { HcsEnvelope, HcsEventType } from '../types'
 
 /**
- * Hedera Consensus Service — değiştirilemez, kişisel veri içermeyen denetim izi.
+ * Hedera Consensus Service — an immutable audit trail that carries no personal data.
  *
- * ZİNCİRE NE ÇIKAR: olay tipi, propertyId, zaman damgası ve türetilmiş özetler
- * (Merkle kökü, belge sayısı, token id, işlem id).
+ * WHAT GOES ON-CHAIN: the event type, propertyId, a timestamp, and derived digests
+ * (Merkle root, document count, token id, transaction id).
  *
- * ZİNCİRE NE ÇIKMAZ: World nullifier veya proof, selfie/kimlik verisi, belge byte'ı,
- * salt, gelir/ad/doğum tarihi gibi hiçbir kişisel alan. `assertNoSensitiveKeys()`
- * bunu geliştirme sırasında zorlar — sessiz bir sızıntı, mahremiyet iddiasının
- * tamamını çürütür.
+ * WHAT NEVER GOES ON-CHAIN: World nullifiers or proofs, selfie/identity data, document
+ * bytes, salts, or any personal field such as income, name, or date of birth.
+ * `assertNoSensitiveKeys()` enforces this during development — a single silent leak would
+ * invalidate the entire privacy claim.
  */
 
 const FORBIDDEN_KEY_PATTERN =
@@ -26,7 +26,7 @@ function assertNoSensitiveKeys(payload: Record<string, unknown>, path = 'payload
   for (const [key, value] of Object.entries(payload)) {
     if (FORBIDDEN_KEY_PATTERN.test(key)) {
       throw new Error(
-        `HCS payload'ı hassas alan içeriyor: ${path}.${key} — zincire yazılamaz.`,
+        `HCS payload contains a sensitive field: ${path}.${key} — it cannot be written on-chain.`,
       )
     }
     if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -41,21 +41,22 @@ export async function createAuditTopic(client: Client): Promise<string> {
   const receipt = await (
     await new TopicCreateTransaction()
       .setTopicMemo('PPREV audit trail v1')
-      // Admin key olmadan topic silinemez/değiştirilemez; denetim izinin
-      // değiştirilemezlik iddiası için submit key de koymuyoruz (public okunur).
+      // Without an admin key the topic could never be deleted or updated; we also leave the
+      // submit key unset (the topic is publicly readable) to back the audit trail's
+      // immutability claim.
       .setAdminKey(operator.privateKey.publicKey)
       .execute(client)
   ).getReceipt(client)
 
   const topicId = receipt.topicId
-  if (!topicId) throw new Error('HCS topic oluşturulamadı')
+  if (!topicId) throw new Error('Failed to create the HCS topic')
   return topicId.toString()
 }
 
 export function getAuditTopicId(): string {
   const topicId = process.env.AUDIT_TOPIC_ID
   if (!topicId || topicId.trim() === '') {
-    throw new Error('AUDIT_TOPIC_ID tanımlı değil. Önce `npm run bootstrap` çalıştır.')
+    throw new Error('AUDIT_TOPIC_ID is not set. Run `npm run bootstrap` first.')
   }
   return topicId.trim()
 }
@@ -68,9 +69,9 @@ export type SubmittedEvent = {
 }
 
 /**
- * Versiyonlu bir denetim olayını topic'e yazar.
- * `schemaVersion` zarfın içinde taşınır ki ileride alan eklendiğinde eski okuyucular
- * mesajı hâlâ ayrıştırabilsin.
+ * Writes a versioned audit event to the topic.
+ * `schemaVersion` travels inside the envelope so that when fields are added later, older
+ * readers can still parse the message.
  */
 export async function submitEvent(
   eventType: HcsEventType,
@@ -115,8 +116,9 @@ export async function submitEvent(
 }
 
 /**
- * Denetim olayı yazamamak demoyu durdurmamalı — asıl işlem (token, transfer) zaten
- * zincirde. Hatayı yutup logluyoruz ki tek bir HCS gecikmesi akışı kesmesin.
+ * Failing to write an audit event must not stop the demo — the real operation (token,
+ * transfer) is already on-chain. We swallow the error and log it so that a single slow HCS
+ * call doesn't break the flow.
  */
 export async function submitEventSafe(
   eventType: HcsEventType,
@@ -127,7 +129,7 @@ export async function submitEventSafe(
     return await submitEvent(eventType, propertyId, payload)
   } catch (error) {
     console.error(
-      `HCS event yazılamadı (${eventType}/${propertyId}):`,
+      `Failed to write HCS event (${eventType}/${propertyId}):`,
       error instanceof Error ? error.message : error,
     )
     return null

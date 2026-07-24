@@ -18,24 +18,27 @@ import { recordTransaction } from '../store'
 import { ApiError } from '../errors'
 
 /**
- * Hedera Token Service — fraksiyonel mülk hissesi.
+ * Hedera Token Service — fractional property shares.
  *
- * Tasarım kararları:
- *  - `decimals = 0`, arz `1000` → bir hisse bölünmez bir birim; "1000'de 3 hisse"
- *    demek kullanıcı için ondalıklı bakiyeden anlaşılır.
- *  - `kycKey` → transfer kimliğe bağlanır. KYC verilmemiş hesap transfer denerse
- *    işlem UYGULAMA kuralıyla değil AĞ SEVİYESİNDE reddedilir. Demonun en güçlü sahnesi.
- *  - `freezeKey` → hesap bazlı dondurma yeteneği (P1 lifecycle için ayrılmış).
- *  - `%2` fractional fee, `min 1` → ikincil transferlerde kira geliri dağıtım
- *    mekanizmasını temsil eder. `FeeAssessmentMethod.Inclusive` seçildi: alıcı 100
- *    isteyince gönderenin bakiyesinden 100 düşer, alıcı 98 alır, 2 collector'a gider.
- *    Exclusive olsaydı gönderenden 102 düşerdi ve "kaç hisse sattım" muhasebesi kayardı.
- *  - Treasury (operator) fee'den muaftır — bu yüzden primary transfer'da fee kesilmez,
- *    yalnız secondary'de görünür. Demoda bu ayrımı jüriye açıkça söylemek gerekiyor.
+ * Design decisions:
+ *  - `decimals = 0`, supply `1000` → a share is an indivisible unit; "3 shares out of 1000"
+ *    is far easier for a user to grasp than a fractional balance.
+ *  - `kycKey` → transfers are bound to identity. If an account without a KYC grant attempts a
+ *    transfer, it is rejected at the NETWORK level, not by an APPLICATION rule. This is the
+ *    strongest scene in the demo.
+ *  - `freezeKey` → per-account freeze capability (reserved for the P1 lifecycle).
+ *  - A 2% fractional fee with `min 1` → models the rental-income distribution mechanism on
+ *    secondary transfers. We chose `FeeAssessmentMethod.Inclusive`: when 100 is sent, 100 is
+ *    debited from the sender, the receiver gets 98, and 2 goes to the collector. With
+ *    Exclusive the sender would be debited 102 and the "how many shares did I sell"
+ *    accounting would drift.
+ *  - The treasury (operator) is exempt from the fee — which is why no fee is charged on a
+ *    primary transfer and it only appears on secondary ones. This distinction has to be
+ *    stated explicitly to the judges during the demo.
  */
 
 export const TOTAL_SUPPLY = 1000
-export const FRACTIONAL_FEE_BPS = 200 // %2
+export const FRACTIONAL_FEE_BPS = 200 // 2%
 
 export type CreatedToken = {
   tokenId: string
@@ -60,7 +63,7 @@ export async function createPropertyToken(
     .setAssessmentMethod(FeeAssessmentMethod.Inclusive)
 
   const response = await new TokenCreateTransaction()
-    // Sembol Hedera'da kısa olmalı; uzun isim `setTokenName`'de taşınır.
+    // Hedera requires a short symbol; the long name is carried by `setTokenName`.
     .setTokenName(`PPREV ${params.displayName}`.slice(0, 100))
     .setTokenSymbol(params.tokenSymbol.slice(0, 32))
     .setTokenType(TokenType.FungibleCommon)
@@ -78,7 +81,7 @@ export async function createPropertyToken(
 
   const receipt = await response.getReceipt(client)
   const tokenId = receipt.tokenId
-  if (!tokenId) throw new Error('Token oluşturulamadı')
+  if (!tokenId) throw new Error('Failed to create the token')
 
   const transactionId = response.transactionId.toString()
   const url = hashscanUrl('token', tokenId.toString())
@@ -102,11 +105,12 @@ export async function createPropertyToken(
 }
 
 /**
- * Hesabı token'a bağlar. Hedera'da alıcının önce açıkça associate olması gerekir —
- * istenmeyen token gönderimini engelleyen ağ seviyesi kural.
+ * Associates an account with a token. On Hedera the receiver must explicitly associate first —
+ * a network-level rule that prevents unsolicited token transfers.
  *
- * Zaten bağlıysa sessizce geçer: seed ve demo akışları birden çok kez çalıştırılıyor,
- * idempotent olmazsa ikinci tur `TOKEN_ALREADY_ASSOCIATED_TO_ACCOUNT` ile patlar.
+ * If the account is already associated we pass silently: the seed and demo flows are run
+ * repeatedly, and without idempotency the second run would blow up with
+ * `TOKEN_ALREADY_ASSOCIATED_TO_ACCOUNT`.
  */
 export async function associateToken(
   tokenId: string,
@@ -141,7 +145,7 @@ export async function associateToken(
   }
 }
 
-/** KYC grant — token'ın KYC key'iyle (operator) imzalanır. */
+/** KYC grant — signed with the token's KYC key (the operator). */
 export async function grantKyc(
   tokenId: string,
   accountId: AccountId | string,
@@ -178,11 +182,11 @@ export type TransferResult = {
 }
 
 /**
- * Hisse transferi.
+ * Share transfer.
  *
- * Fee'yi transaction RECORD'undan okuyoruz, receipt'ten değil — receipt yalnız durum
- * taşır, fiilen kesilen ücretler yalnız record'da bulunur. "Fee gerçekten kesildi mi"
- * kanıtı bu alandan geliyor.
+ * We read the fee from the transaction RECORD, not the receipt — the receipt only carries a
+ * status, while the fees actually assessed live only in the record. The proof that "the fee
+ * was really charged" comes from this field.
  */
 export async function transferShares(
   params: {
@@ -231,11 +235,11 @@ export async function transferShares(
 }
 
 /**
- * Hedera durum kodlarını stabil API hatalarına çevirir.
+ * Maps Hedera status codes to stable API errors.
  *
- * Ham durum string'i `hederaStatus` alanında korunur: UI mantığı `code`'a bakar ama
- * ekranda büyük gösterilen `ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN` metnidir — "bu reddi
- * uygulama değil ağ verdi" anlatısının kanıtı odur.
+ * The raw status string is preserved in the `hederaStatus` field: UI logic keys off `code`,
+ * but what gets shown large on screen is the `ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN` text — that
+ * is the evidence for the "the network issued this rejection, not the application" narrative.
  */
 function mapTransferError(error: unknown): unknown {
   if (hasStatus(error, Status.AccountKycNotGrantedForToken)) {

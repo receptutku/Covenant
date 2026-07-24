@@ -6,25 +6,25 @@ import type {
 } from './types'
 
 /**
- * Süreç-içi demo store'u.
+ * In-process demo store.
  *
- * `globalThis` üzerinde tutulur çünkü Next.js dev sunucusu hot reload'da modülleri
- * yeniden değerlendirir; modül seviyesinde bir Map tutsaydık her kaydetmede demo state
- * sıfırlanırdı. SQLite/native bağımlılık yok — hackathon ortamında kurulum riski sıfır.
+ * It lives on `globalThis` because the Next.js dev server re-evaluates modules on hot
+ * reload; a module-level Map would reset the demo state on every file save. No SQLite,
+ * no native dependencies — zero setup risk in a hackathon environment.
  *
- * Kalıcılık yok: sunucu yeniden başlarsa `/api/seed` demo state'i birkaç saniyede kurar.
+ * Nothing is persisted: if the server restarts, `/api/seed` rebuilds the demo state in seconds.
  */
 type Store = {
   properties: Map<string, Property>
   sellerSessions: Map<string, SellerSession>
   /**
-   * World nullifier'larının HMAC digest'leri — replay kontrolü için.
-   * Ham nullifier ASLA saklanmaz. Anahtar: `HMAC(secret, action + ":" + rawNullifier)`.
+   * HMAC digests of World nullifiers — used for replay protection.
+   * The raw nullifier is NEVER stored. Key: `HMAC(secret, action + ":" + rawNullifier)`.
    */
   worldReplayDigests: Set<string>
   hederaTransactions: HederaTransactionRecord[]
   rentals: Map<string, Rental>
-  /** RENT-001, RENT-002 ... üretmek için. */
+  /** Used to generate RENT-001, RENT-002 ... */
   rentalCounter: number
 }
 
@@ -49,7 +49,7 @@ export function getStore(): Store {
   return g[GLOBAL_KEY]
 }
 
-/** `/api/reset` için — tüm demo state'i temizler. */
+/** For `/api/reset` — wipes all demo state. */
 export function resetStore(): void {
   const g = globalThis as GlobalWithStore
   g[GLOBAL_KEY] = createStore()
@@ -82,9 +82,9 @@ export function putSellerSession(session: SellerSession): void {
 }
 
 /**
- * Oturumu döndürür; süresi dolmuşsa store'dan siler ve `'expired'` bildirir.
- * Çağıran taraf `SELLER_SESSION_REQUIRED` ile `SELLER_SESSION_EXPIRED` arasında
- * ayrım yapabilsin diye üç durumlu sonuç veriyoruz.
+ * Returns the session; if it has expired, drops it from the store and reports `'expired'`.
+ * The result has three states so that callers can distinguish `SELLER_SESSION_REQUIRED`
+ * from `SELLER_SESSION_EXPIRED`.
  */
 export function readSellerSession(
   token: string | undefined,
@@ -100,11 +100,12 @@ export function readSellerSession(
   return { status: 'ok', session }
 }
 
-// ─── World replay koruması ───────────────────────────────────────────────────
+// ─── World replay protection ─────────────────────────────────────────────────
 
 /**
- * Digest daha önce görülmediyse kaydeder ve `true` döner; görülmüşse `false`.
- * Kontrol ve kayıt tek adımda yapılır ki iki eşzamanlı istek aynı proof'u geçiremesin.
+ * Records the digest and returns `true` if it has not been seen before; `false` otherwise.
+ * The check and the write happen in one step so two concurrent requests cannot both pass
+ * with the same proof.
  */
 export function claimReplayDigest(digest: string): boolean {
   const digests = getStore().worldReplayDigests
@@ -113,7 +114,7 @@ export function claimReplayDigest(digest: string): boolean {
   return true
 }
 
-// ─── Hedera işlem kaydı ──────────────────────────────────────────────────────
+// ─── Hedera transaction log ──────────────────────────────────────────────────
 
 export function recordTransaction(record: HederaTransactionRecord): void {
   getStore().hederaTransactions.push(record)

@@ -2,24 +2,25 @@
 
 **Privacy-Preserving Real Estate Verification** · ETHGlobal Lisbon 2026
 
-Gayrimenkul kiralama ve satışında mülk sahipliği doğrulanmadan ve karşı taraf uygunluğu
-kanıtlanmadan işlemin ilerleyemediği; kimlik, doğrulama ve compliance kararlarının kişisel
-veri sızdırmadan zincire yazıldığı bir protokol. Tek çekirdek, iki mod: **satış**
-(fraksiyonel hisse) ve **kiralama** (escrow depozito).
+A protocol for renting and selling real estate in which no transaction can move forward until
+property ownership has been verified and counterparty eligibility has been proven — and in
+which identity, verification, and compliance decisions are written on-chain without leaking
+personal data. One core, two modes: **sale** (fractional shares) and **rental** (escrowed
+deposit).
 
-> 🚧 Hackathon devam ediyor. Bu README iki yarıya bölünmüştür — çakışmayı önlemek için
-> herkes yalnız kendi yarısına yazar.
+> 🚧 Hackathon in progress. This README is split into two halves — to avoid conflicts, each of
+> us writes only in our own half.
 
 ---
 
-<!-- ═══════════ ÜST YARI — AKİF ═══════════ -->
-<!-- pitch · ekran görüntüleri · how it works · track tablosu -->
+<!-- ═══════════ TOP HALF — AKIF ═══════════ -->
+<!-- pitch · screenshots · how it works · track table -->
 
 ## Pitch
 
 _(Akif — A9)_
 
-## Ekran görüntüleri
+## Screenshots
 
 _(Akif — A9)_
 
@@ -27,36 +28,36 @@ _(Akif — A9)_
 
 _(Akif — A9)_
 
-## Track tablosu
+## Track table
 
 _(Akif — A9)_
 
-<!-- ═══════════ ÜST YARI SONU ═══════════ -->
+<!-- ═══════════ END OF TOP HALF ═══════════ -->
 
 ---
 
-<!-- ═══════════ ALT YARI — RECEP ═══════════ -->
-<!-- mimari · No Solidity · kurulum · verifier sınırı · public/private tablo · ENS · evidence · AI usage -->
+<!-- ═══════════ BOTTOM HALF — RECEP ═══════════ -->
+<!-- architecture · No Solidity · setup · verifier boundary · public/private table · ENS · evidence · AI usage -->
 
-## Mimari
+## Architecture
 
 _(Recep — R8)_
 
-## Kurulum
+## Setup
 
 ```bash
 npm install
-cp .env.example .env.local   # değerleri doldur
+cp .env.example .env.local   # fill in the values
 npm run dev
 ```
 
-Ayrıntılı kurulum ve demo seed adımları R8'de yazılacak.
+Detailed setup and demo seeding steps will be written in R8.
 
-## Minimal verifier sınırı
+## The minimal verifier boundary
 
 _(Recep — R8)_
 
-## Public / private veri tablosu
+## Public / private data table
 
 _(Recep — R8)_
 
@@ -66,35 +67,36 @@ _(Recep — R8)_
 
 ## Evidence
 
-Canlı zincir kanıtları: [`docs/EVIDENCE.md`](docs/EVIDENCE.md)
+Live on-chain evidence: [`docs/EVIDENCE.md`](docs/EVIDENCE.md)
 
 ## AI Usage
 
 _(Recep — R8)_
 
-<!-- ═══════════ ALT YARI SONU ═══════════ -->
+<!-- ═══════════ END OF BOTTOM HALF ═══════════ -->
 
 ---
 
-## Dokümanlar
+## Documents
 
-| Dosya | İçerik | Sahip |
+| File | Contents | Owner |
 |---|---|---|
-| [`docs/API.md`](docs/API.md) | API kontratı — tek doğruluk kaynağı | Recep |
-| `docs/EVIDENCE.md` | Canlı zincir kanıt linkleri | Recep |
-| `docs/SUBMISSION.md` | ETHGlobal submission metni | Akif |
-| `docs/FEEDBACK_selfie.md` | World Selfie Check geri bildirimi | Akif (user) + Recep (developer) |
-| `docs/FEEDBACK_identity.md` | World Identity Check geri bildirimi | Akif (user) + Recep (developer) |
+| [`docs/API.md`](docs/API.md) | API contract — the single source of truth | Recep |
+| `docs/EVIDENCE.md` | Live on-chain evidence links | Recep |
+| `docs/SUBMISSION.md` | ETHGlobal submission text | Akif |
+| `docs/FEEDBACK_selfie.md` | World Selfie Check feedback | Akif (user) + Recep (developer) |
+| `docs/FEEDBACK_identity.md` | World Identity Check feedback | Akif (user) + Recep (developer) |
 
-## Dizin sahipliği
+## Directory ownership
 
-Çakışmasız paralel geliştirme için:
+To keep parallel development conflict-free:
 
 - **Recep:** `app/api/**`, `lib/hedera/**`, `lib/world/**`, `lib/verifier/**`, `lib/crypto/**`, `lib/store.ts`, `lib/ens/**`, `scripts/**`
 - **Akif:** `app/components/**`, `app/views/**`, `app/globals.css`, `lib/mockApi.ts`, `lib/realApi.ts`
-- **Ortak (dokunmadan önce haber ver):** `app/page.tsx`, `docs/API.md`, `README.md`, `package*.json`, `.env.example`
+- **Shared (announce before touching):** `app/page.tsx`, `docs/API.md`, `README.md`, `package*.json`, `.env.example`
 
-## Solidity yok
+## No Solidity
 
-Tüm zincir işlemleri native Hedera SDK ile yapılır — HTS (token), HCS (audit), Mirror Node
-(public doğrulama). Repo'da hiçbir `.sol` dosyası veya EVM deploy adımı yoktur.
+Every on-chain operation runs through the native Hedera SDK — HTS (tokens), HCS (audit),
+Mirror Node (public verification). The repository contains no `.sol` files and no EVM deploy
+step.

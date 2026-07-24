@@ -1,13 +1,13 @@
 import { AccountBalanceQuery, AccountId, Client, Hbar, PrivateKey } from '@hashgraph/sdk'
 
 /**
- * Hedera testnet istemcisi ve anahtar çözümlemesi.
+ * Hedera testnet client and key parsing.
  *
- * TEK PARSE NOKTASI: Tüm private key'ler `parseKey()` üzerinden geçer. Demo hesapları
- * karışık algoritmalarda (operator ECDSA secp256k1, script'in ürettiği hesaplar ED25519)
- * olduğu için `fromStringDer` kullanıyoruz — DER başlığındaki OID'ye bakıp doğru eğriyi
- * kendisi seçer. `fromStringECDSA`/`fromStringED25519` sabitlemek yanlış imza üretir ve
- * hata `INVALID_SIGNATURE` olarak döner; teşhisi pahalıdır.
+ * SINGLE PARSE POINT: every private key goes through `parseKey()`. The demo accounts use
+ * mixed algorithms (the operator is ECDSA secp256k1, the accounts the script generates are
+ * ED25519), so we use `fromStringDer` — it reads the OID from the DER header and picks the
+ * right curve itself. Hard-coding `fromStringECDSA`/`fromStringED25519` would produce an
+ * invalid signature that surfaces as `INVALID_SIGNATURE`, which is expensive to diagnose.
  */
 
 export type HederaNetwork = 'testnet' | 'previewnet' | 'mainnet'
@@ -15,7 +15,7 @@ export type HederaNetwork = 'testnet' | 'previewnet' | 'mainnet'
 function requireEnv(name: string): string {
   const value = process.env[name]
   if (!value || value.trim() === '') {
-    throw new Error(`Eksik ortam değişkeni: ${name} (.env.local dosyasını kontrol et)`)
+    throw new Error(`Missing environment variable: ${name} (check your .env.local file)`)
   }
   return value.trim()
 }
@@ -25,7 +25,7 @@ export function parseKey(raw: string): PrivateKey {
   try {
     return PrivateKey.fromStringDer(text)
   } catch {
-    // Portal bazen 0x önekli ham hex verir; DER değilse ECDSA ham anahtar varsayılır.
+    // The portal sometimes hands out raw hex with a 0x prefix; if it isn't DER, assume a raw ECDSA key.
     return PrivateKey.fromStringECDSA(text.startsWith('0x') ? text.slice(2) : text)
   }
 }
@@ -47,15 +47,16 @@ export function getOperator(): HederaAccount {
 }
 
 /**
- * Demo hesabını env'den okur. `create-accounts` script'i çalışmadıysa anlaşılır hata verir
- * — aksi halde arıza `INVALID_ACCOUNT_ID` olarak çok sonra ortaya çıkar.
+ * Reads a demo account from the environment. If the `create-accounts` script has not been run,
+ * this fails with a clear message — otherwise the problem only shows up much later as
+ * `INVALID_ACCOUNT_ID`.
  */
 export function getDemoAccount(name: 'BUYER1' | 'BUYER2' | 'NOKYC'): HederaAccount {
   const id = process.env[`${name}_ID`]
   const key = process.env[`${name}_KEY`]
   if (!id || !key) {
     throw new Error(
-      `${name} hesabı tanımlı değil. Önce \`npm run accounts:create\` çalıştır.`,
+      `The ${name} account is not configured. Run \`npm run accounts:create\` first.`,
     )
   }
   return { accountId: AccountId.fromString(id.trim()), privateKey: parseKey(key) }
@@ -65,8 +66,8 @@ const CLIENT_KEY = Symbol.for('pprev.hedera.client.v1')
 type GlobalWithClient = typeof globalThis & { [CLIENT_KEY]?: Client }
 
 /**
- * Paylaşılan istemci. `globalThis`'te tutulur çünkü Next.js hot reload'da modül yeniden
- * değerlendirilir; her seferinde yeni Client açsaydık gRPC bağlantıları sızardı.
+ * Shared client. It lives on `globalThis` because Next.js re-evaluates the module on hot
+ * reload; opening a fresh Client every time would leak gRPC connections.
  */
 export function getClient(): Client {
   const g = globalThis as GlobalWithClient
@@ -74,7 +75,7 @@ export function getClient(): Client {
     const operator = getOperator()
     const client = Client.forName(getNetwork())
     client.setOperator(operator.accountId, operator.privateKey)
-    // Ağ dalgalanmasında istek sonsuza kadar asılı kalmasın.
+    // Don't let a request hang forever when the network is flaky.
     client.setRequestTimeout(30_000)
     g[CLIENT_KEY] = client
   }
@@ -88,8 +89,8 @@ export function closeClient(): void {
 }
 
 /**
- * Script'ler için: istemciyi kullanır ve ne olursa olsun kapatır.
- * Kapatılmazsa Node süreci açık gRPC bağlantısı yüzünden sonlanmaz.
+ * For scripts: uses the client and closes it no matter what.
+ * Without the close, the Node process never exits because of the open gRPC connection.
  */
 export async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
   try {
@@ -99,7 +100,7 @@ export async function withClient<T>(fn: (client: Client) => Promise<T>): Promise
   }
 }
 
-// ─── HashScan linkleri ───────────────────────────────────────────────────────
+// ─── HashScan links ──────────────────────────────────────────────────────────
 
 export function hashscanUrl(
   kind: 'transaction' | 'token' | 'topic' | 'account',

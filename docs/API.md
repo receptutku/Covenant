@@ -1,62 +1,62 @@
-KONTRAT-SÜRÜM: 1
+CONTRACT-VERSION: 1
 
-# PPREV API Kontratı
+# PPREV API Contract
 
-> Bu dosya Recep (backend) ile Akif (frontend) arasındaki tek doğruluk kaynağıdır.
-> `lib/mockApi.ts` ve `lib/realApi.ts` bu dosyaya birebir uyar.
+> This file is the single source of truth between Recep (backend) and Akif (frontend).
+> `lib/mockApi.ts` and `lib/realApi.ts` conform to it exactly.
 >
-> **Sürüm kuralı:** Kırıcı bir değişiklikte üstteki `KONTRAT-SÜRÜM` +1 artar, commit mesajına
-> `BREAKING` yazılır ve karşı tarafa haber verilir. `lib/mockApi.ts` ilk satırındaki
-> `// KONTRAT-SÜRÜM: N` bu numarayla eşleşmelidir.
+> **Versioning rule:** any breaking change bumps the `CONTRACT-VERSION` marker above by 1, adds
+> `BREAKING` to the commit message, and is communicated to the other side. The
+> `// CONTRACT-VERSION: N` comment on the first line of `lib/mockApi.ts` must match that number.
 
 ---
 
-## 0. Genel kurallar
+## 0. General rules
 
-- Tüm istekler ve yanıtlar `application/json`.
-- Başarılı yanıt: `200`, aşağıdaki endpoint şemaları.
-- Hatalı yanıt **her zaman** şu zarfı kullanır:
+- All requests and responses are `application/json`.
+- Successful response: `200`, following the endpoint schemas below.
+- Error responses **always** use this envelope:
 
 ```json
-{ "error": "İnsan tarafından okunabilir açıklama", "code": "STABIL_ERROR_CODE" }
+{ "error": "Human-readable explanation", "code": "STABIL_ERROR_CODE" }
 ```
 
-- UI mantığı **yalnız `code` alanına** bakar. `error` metni değişebilir, `code` değişmez.
-- Bazı yanıtlar `code` yanında ek vitrin alanları taşır (örn. `hederaStatus`). Bunlar
-  ekranda gösterilmek içindir, mantık kurmak için değil.
-- Hiçbir yanıt şunları **asla** içermez: raw World nullifier, World proof, selfie/kimlik
-  verisi, belge byte'ları, belge salt'ı, herhangi bir private key, ham Hedera SDK nesnesi.
+- UI logic reads **only the `code` field**. The `error` text may change; the `code` never does.
+- Some responses carry extra presentation-only fields alongside `code` (e.g. `hederaStatus`).
+  These are meant for display, not for driving logic.
+- No response **ever** contains: a raw World nullifier, a World proof, selfie/identity data,
+  document bytes, a document salt, any private key, or a raw Hedera SDK object.
 
-### HTTP durum kodu eşlemesi
+### HTTP status code mapping
 
-| Durum | Anlamı |
+| Status | Meaning |
 |---|---|
-| `200` | Başarılı |
-| `400` | Geçersiz girdi (Zod doğrulaması, eksik alan) |
-| `401` | Kimlik/oturum yok veya geçersiz (`SELLER_SESSION_*`, admin secret) |
-| `403` | Yetki yok (`NOT_LANDLORD`) |
-| `404` | Kayıt yok (`PROPERTY_NOT_FOUND`) |
-| `409` | State çakışması (`ALREADY_TOKENIZED`, `LOCK_NOT_EXPIRED`) |
-| `422` | İş kuralı reddi (`KYC_DENIED`, `ATTESTATION_INVALID`, `OWNERSHIP_PENDING`) |
-| `500` | Beklenmeyen sunucu hatası (detay sızdırmaz) |
+| `200` | Success |
+| `400` | Invalid input (Zod validation, missing field) |
+| `401` | Missing or invalid identity/session (`SELLER_SESSION_*`, admin secret) |
+| `403` | Not authorized (`NOT_LANDLORD`) |
+| `404` | Record not found (`PROPERTY_NOT_FOUND`) |
+| `409` | State conflict (`ALREADY_TOKENIZED`, `LOCK_NOT_EXPIRED`) |
+| `422` | Business-rule rejection (`KYC_DENIED`, `ATTESTATION_INVALID`, `OWNERSHIP_PENDING`) |
+| `500` | Unexpected server error (leaks no details) |
 
 ---
 
-## 1. Stabil hata kodları
+## 1. Stable error codes
 
-Bu liste kapalıdır. Yeni kod eklemek kontrat sürümünü artırır.
+This list is closed. Adding a new code bumps the contract version.
 
 ```text
-# Oturum / seller
+# Session / seller
 SELLER_SESSION_REQUIRED
 SELLER_SESSION_EXPIRED
 
-# Belge yükleme
+# Document upload
 TOO_MANY_FILES
 FILE_TOO_LARGE
 UNSUPPORTED_FILE_TYPE
 
-# Property / sahiplik
+# Property / ownership
 PROPERTY_NOT_FOUND
 OWNERSHIP_PENDING
 OWNERSHIP_REJECTED
@@ -75,7 +75,7 @@ WORLD_PROOF_REPLAY
 # ENS
 ENS_CONFIG_INCOMPLETE
 
-# Kiralama (RENTAL)
+# Rental (RENTAL)
 RENTAL_NOT_APPROVED
 RENTAL_NOT_ENGAGED
 LOCK_EXPIRED
@@ -83,7 +83,7 @@ LOCK_NOT_EXPIRED
 INSUFFICIENT_DEPOSIT
 NOT_LANDLORD
 
-# Genel
+# General
 INVALID_INPUT
 UNAUTHORIZED
 INTERNAL_ERROR
@@ -91,9 +91,9 @@ INTERNAL_ERROR
 
 ---
 
-## 2. HCS olay kataloğu (ortak — birebir bu string'ler)
+## 2. HCS event catalogue (shared — these exact strings)
 
-Audit timeline bu isimleri okur. **İsim değişirse Akif'in timeline'ı boş kutu gösterir.**
+The audit timeline reads these names. **If a name changes, Akif's timeline renders an empty box.**
 
 **SALE:**
 
@@ -118,7 +118,7 @@ RENTAL_SETTLED
 RENTAL_EXPIRED
 ```
 
-Her HCS mesajının zarfı:
+The envelope of every HCS message:
 
 ```json
 {
@@ -130,7 +130,7 @@ Her HCS mesajının zarfı:
 }
 ```
 
-`payload` **asla** PII, nullifier, proof, belge byte'ı veya salt içermez.
+`payload` **never** contains PII, nullifiers, proofs, document bytes, or salts.
 
 ---
 
@@ -141,10 +141,10 @@ DRAFT → PENDING_REVIEW → APPROVED  → TOKENIZED
                        ↘ REJECTED
 ```
 
-- `tokenize` yalnız `APPROVED` state'te ve geçerli imzayla çalışır.
-- İkinci tokenizasyon engellenir (`ALREADY_TOKENIZED`).
-- Kiralama yalnız **saf `APPROVED`** (henüz tokenize edilmemiş) mülkte olur.
-  `TOKENIZED` mülk `rental/list`'e gelirse → `RENTAL_NOT_APPROVED`.
+- `tokenize` only runs in the `APPROVED` state and only with a valid signature.
+- A second tokenization is blocked (`ALREADY_TOKENIZED`).
+- Renting is only possible for a **purely `APPROVED`** property (one that has not been
+  tokenized yet). A `TOKENIZED` property hitting `rental/list` → `RENTAL_NOT_APPROVED`.
 
 ## 4. Rental state machine
 
@@ -153,21 +153,21 @@ LISTED → APPLIED → ENGAGED → SETTLED
                            ↘ EXPIRED
 ```
 
-`SETTLED` ve `EXPIRED` ikisi de terminaldir (demo sadeliği).
+`SETTLED` and `EXPIRED` are both terminal (for demo simplicity).
 
 ---
 
-# Endpoint'ler
+# Endpoints
 
-## `POST /api/onboard` — Seller/Landlord Selfie kapısı
+## `POST /api/onboard` — Seller/Landlord selfie gate
 
-World **Selfie Check** proof'unu sunucuda doğrular, opak bir seller session üretir.
+Verifies the World **Selfie Check** proof server-side and issues an opaque seller session.
 
 **Request**
 
 ```json
 {
-  "proof": { "...": "IDKit success payload (olduğu gibi iletilir)" },
+  "proof": { "...": "IDKit success payload (forwarded as-is)" },
   "action": "onboard-seller"
 }
 ```
@@ -177,21 +177,22 @@ World **Selfie Check** proof'unu sunucuda doğrular, opak bir seller session ür
 ```json
 {
   "onboarded": true,
-  "sellerSessionToken": "a1b2c3... (opak, 64 hex)",
+  "sellerSessionToken": "a1b2c3... (opaque, 64 hex)",
   "expiresAt": "2026-07-24T10:45:00.000Z"
 }
 ```
 
-> `sellerSessionToken` World nullifier **değildir** — `randomBytes(32)`. UI bunu ekranda
-> göstermez, `localStorage`/console'a yazmaz; yalnız kısa ömürlü memory state'te tutar.
+> `sellerSessionToken` is **not** a World nullifier — it is `randomBytes(32)`. The UI never
+> displays it, never writes it to `localStorage` or the console; it lives only in short-lived
+> memory state.
 
-**Hatalar:** `WORLD_PROOF_INVALID` (422), `WORLD_PROOF_REPLAY` (422), `INVALID_INPUT` (400)
+**Errors:** `WORLD_PROOF_INVALID` (422), `WORLD_PROOF_REPLAY` (422), `INVALID_INPUT` (400)
 
 **HCS:** `SELLER_ONBOARDED`
 
 ---
 
-## `POST /api/attest` — Mülk belgesi gönderimi
+## `POST /api/attest` — Property document submission
 
 **Request**
 
@@ -203,12 +204,12 @@ World **Selfie Check** proof'unu sunucuda doğrular, opak bir seller session ür
   "city": "Lisbon",
   "sellerAccountId": "0.0.123456",
   "tokenSymbol": "ALFM",
-  "files": [{ "name": "tapu.pdf", "type": "application/pdf", "dataBase64": "JVBERi0..." }]
+  "files": [{ "name": "title-deed.pdf", "type": "application/pdf", "dataBase64": "JVBERi0..." }]
 }
 ```
 
-Limitler: en fazla **3** dosya, dosya başına **5 MB** (base64 decode sonrası ölçülür),
-izinli tipler: `application/pdf`, `image/png`, `image/jpeg`.
+Limits: at most **3** files, **5 MB** per file (measured after base64 decoding), allowed
+types: `application/pdf`, `image/png`, `image/jpeg`.
 
 **Response 200**
 
@@ -222,10 +223,10 @@ izinli tipler: `application/pdf`, `image/png`, `image/jpeg`.
 }
 ```
 
-> `documentRoot` = salted, domain-separated Merkle kökü. Salt ve belge byte'ları
-> sunucuda private kalır; yanıtta ve HCS'de yer almaz.
+> `documentRoot` is a salted, domain-separated Merkle root. The salt and the document bytes
+> stay private on the server; they appear neither in the response nor on HCS.
 
-**Hatalar:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
+**Errors:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
 `TOO_MANY_FILES` (400), `FILE_TOO_LARGE` (400), `UNSUPPORTED_FILE_TYPE` (400),
 `INVALID_INPUT` (400)
 
@@ -233,7 +234,7 @@ izinli tipler: `application/pdf`, `image/png`, `image/jpeg`.
 
 ---
 
-## `GET /api/verifier/pending` — İnceleme kuyruğu
+## `GET /api/verifier/pending` — Review queue
 
 **Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
 
@@ -249,19 +250,19 @@ izinli tipler: `application/pdf`, `image/png`, `image/jpeg`.
       "sellerAccountId": "0.0.123456",
       "submittedAt": "2026-07-24T10:15:00.000Z",
       "documentRoot": "9f2c...",
-      "files": [{ "name": "tapu.pdf", "type": "application/pdf", "sizeBytes": 214233 }]
+      "files": [{ "name": "title-deed.pdf", "type": "application/pdf", "sizeBytes": 214233 }]
     }
   ]
 }
 ```
 
-> Yalnız metadata döner — belge içeriği hiçbir zaman API üzerinden gitmez.
+> Metadata only — document contents never travel over the API.
 
-**Hatalar:** `UNAUTHORIZED` (401)
+**Errors:** `UNAUTHORIZED` (401)
 
 ---
 
-## `POST /api/verifier/decision` — İnsan kararı + Ed25519 attestation
+## `POST /api/verifier/decision` — Human decision + Ed25519 attestation
 
 **Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
 
@@ -271,7 +272,7 @@ izinli tipler: `application/pdf`, `image/png`, `image/jpeg`.
 { "propertyId": "PROP-002", "decision": "APPROVED", "reason": null }
 ```
 
-`decision`: `"APPROVED" | "REJECTED"`. `REJECTED` ise `reason` zorunlu.
+`decision`: `"APPROVED" | "REJECTED"`. When `REJECTED`, `reason` is required.
 
 **Response 200 (APPROVED)**
 
@@ -292,7 +293,7 @@ izinli tipler: `application/pdf`, `image/png`, `image/jpeg`.
 }
 ```
 
-İmzalanan payload (satır sonları `\n`, sabit sıra):
+The signed payload (line breaks are `\n`, fixed field order):
 
 ```text
 PPREV_OWNERSHIP_V1
@@ -307,25 +308,25 @@ expiresAt=<ISO8601>
 **Response 200 (REJECTED)**
 
 ```json
-{ "propertyId": "PROP-002", "state": "REJECTED", "reason": "Belge okunamıyor" }
+{ "propertyId": "PROP-002", "state": "REJECTED", "reason": "Document is not legible" }
 ```
 
-**Hatalar:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400)
+**Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400)
 
 **HCS:** `OWNERSHIP_APPROVED` / `OWNERSHIP_REJECTED`
 
 ---
 
-## `POST /api/tokenize` — HTS token oluşturma (güvenlik kapısı)
+## `POST /api/tokenize` — HTS token creation (security gate)
 
 **Request**
 
 ```json
-{ "propertyId": "PROP-002", "attestation": { "...": "decision yanıtındaki nesne" } }
+{ "propertyId": "PROP-002", "attestation": { "...": "the object returned by the decision endpoint" } }
 ```
 
-Kapı sırası: state `APPROVED` → imza doğrula → `propertyId`/`sellerAccountId`/
-`documentRoot` store ile eşleş → `expiresAt` geçmemiş → token oluştur.
+Gate order: state is `APPROVED` → verify signature → `propertyId`/`sellerAccountId`/
+`documentRoot` match the store → `expiresAt` has not passed → create the token.
 
 **Response 200**
 
@@ -341,9 +342,9 @@ Kapı sırası: state `APPROVED` → imza doğrula → `propertyId`/`sellerAccou
 }
 ```
 
-**Hatalar:** `PROPERTY_NOT_FOUND` (404), `OWNERSHIP_PENDING` (422),
+**Errors:** `PROPERTY_NOT_FOUND` (404), `OWNERSHIP_PENDING` (422),
 `OWNERSHIP_REJECTED` (422), `ATTESTATION_INVALID` (422), `ATTESTATION_EXPIRED` (422),
-`ALREADY_TOKENIZED` (409 — mevcut `tokenId`'yi de döner)
+`ALREADY_TOKENIZED` (409 — also returns the existing `tokenId`)
 
 **HCS:** `PROPERTY_TOKEN_CREATED`
 
@@ -351,8 +352,8 @@ Kapı sırası: state `APPROVED` → imza doğrula → `propertyId`/`sellerAccou
 
 ## `POST /api/rp-signature` — World RP context
 
-IDKit widget'ının ihtiyaç duyduğu imzalı RP context'ini üretir.
-`action` whitelist dışıysa reddedilir.
+Produces the signed RP context that the IDKit widget requires.
+Any `action` outside the whitelist is rejected.
 
 **Request**
 
@@ -360,7 +361,7 @@ IDKit widget'ının ihtiyaç duyduğu imzalı RP context'ini üretir.
 { "action": "verify-buyer", "signal": "PROP-002:0.0.654321" }
 ```
 
-İzinli `action` değerleri: `onboard-seller`, `verify-buyer`, `verify-tenant`.
+Allowed `action` values: `onboard-seller`, `verify-buyer`, `verify-tenant`.
 
 **Response 200**
 
@@ -368,7 +369,7 @@ IDKit widget'ının ihtiyaç duyduğu imzalı RP context'ini üretir.
 { "appId": "app_staging_...", "action": "verify-buyer", "signal": "...", "signature": "..." }
 ```
 
-**Hatalar:** `INVALID_INPUT` (400)
+**Errors:** `INVALID_INPUT` (400)
 
 ---
 
@@ -385,8 +386,8 @@ IDKit widget'ının ihtiyaç duyduğu imzalı RP context'ini üretir.
 }
 ```
 
-Akış: proof doğrula → nullifier HMAC digest ile replay kontrolü → property'nin gerçek
-`tokenId`'sini oku → `associate` → `grantKyc`.
+Flow: verify proof → replay check against the HMAC digest of the nullifier → read the
+property's real `tokenId` → `associate` → `grantKyc`.
 
 **Response 200**
 
@@ -402,14 +403,14 @@ Akış: proof doğrula → nullifier HMAC digest ile replay kontrolü → proper
 }
 ```
 
-**Hatalar:** `WORLD_PROOF_INVALID` (422), `WORLD_PROOF_REPLAY` (422),
+**Errors:** `WORLD_PROOF_INVALID` (422), `WORLD_PROOF_REPLAY` (422),
 `PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400)
 
-**HCS:** `BUYER_ELIGIBILITY_CONFIRMED`, ardından `KYC_GRANTED`
+**HCS:** `BUYER_ELIGIBILITY_CONFIRMED`, then `KYC_GRANTED`
 
 ---
 
-## `POST /api/buy` — Hisse transferi
+## `POST /api/buy` — Share transfer
 
 **Request**
 
@@ -422,7 +423,7 @@ Akış: proof doğrula → nullifier HMAC digest ile replay kontrolü → proper
 }
 ```
 
-`mode`: `"primary"` (operator → buyer) | `"secondary"` (buyer1 → buyer2) | `"nokyc"` (operator → nokyc, reddedilmeli).
+`mode`: `"primary"` (operator → buyer) | `"secondary"` (buyer1 → buyer2) | `"nokyc"` (operator → nokyc, must be rejected).
 
 **Response 200**
 
@@ -441,9 +442,10 @@ Akış: proof doğrula → nullifier HMAC digest ile replay kontrolü → proper
 }
 ```
 
-Primary transfer'da `assessedCustomFees` boştur (treasury muafiyeti). Secondary'de `amount: 2`.
+On a primary transfer `assessedCustomFees` is empty (treasury exemption). On a secondary
+transfer it is `amount: 2`.
 
-**Response 422 (nokyc — ALTIN SAHNE)**
+**Response 422 (nokyc — THE GOLDEN MOMENT)**
 
 ```json
 {
@@ -453,17 +455,17 @@ Primary transfer'da `assessedCustomFees` boştur (treasury muafiyeti). Secondary
 }
 ```
 
-> `code` stabildir (UI mantığı buna bakar). `hederaStatus` vitrindir — ekranda büyük
-> gösterilir, "Hedera ağ seviyesinde reddetti" anlatısını taşır.
+> `code` is stable (UI logic depends on it). `hederaStatus` is for display — it is shown
+> prominently on screen and carries the "Hedera rejected this at the network level" narrative.
 
-**Hatalar:** `PROPERTY_NOT_FOUND` (404), `KYC_DENIED` (422),
+**Errors:** `PROPERTY_NOT_FOUND` (404), `KYC_DENIED` (422),
 `TOKEN_NOT_ASSOCIATED` (422), `INVALID_INPUT` (400)
 
-**HCS:** `TOKEN_TRANSFERRED` (yalnız başarılı transferde)
+**HCS:** `TOKEN_TRANSFERRED` (only on a successful transfer)
 
 ---
 
-## `POST /api/ens-read` — ENS canlı config çözümü
+## `POST /api/ens-read` — Live ENS config resolution
 
 **Request**
 
@@ -471,7 +473,7 @@ Primary transfer'da `assessedCustomFees` boştur (treasury muafiyeti). Secondary
 { "propertyId": "PROP-002" }
 ```
 
-Sunucu `prop-002.<ENS_PARENT_NAME>` adını normalize edip Sepolia'dan çözer.
+The server normalizes the name `prop-002.<ENS_PARENT_NAME>` and resolves it on Sepolia.
 
 **Response 200 (SALE)**
 
@@ -496,13 +498,13 @@ Sunucu `prop-002.<ENS_PARENT_NAME>` adını normalize edip Sepolia'dan çözer.
 }
 ```
 
-**Response 200 (RENTAL)** — aynı zarf, farklı alan seti:
-`com.pprev.rental.escrowAccount` ve `com.pprev.rental.reqDeposit` vardır;
-`propertyTokenId` ve `revenueTreasury` **yoktur**.
+**Response 200 (RENTAL)** — same envelope, different field set:
+`com.pprev.rental.escrowAccount` and `com.pprev.rental.reqDeposit` are present;
+`propertyTokenId` and `revenueTreasury` are **absent**.
 
-### Zorunlu alanlar (mode'a göre)
+### Required records (by mode)
 
-| Ortak (6) | SALE ek (2) | RENTAL ek (2) |
+| Shared (6) | SALE extras (2) | RENTAL extras (2) |
 |---|---|---|
 | `hedera.network` | `hedera.propertyTokenId` | `rental.escrowAccount` |
 | `policy.hash` | `hedera.revenueTreasury` | `rental.reqDeposit` |
@@ -511,19 +513,19 @@ Sunucu `prop-002.<ENS_PARENT_NAME>` adını normalize edip Sepolia'dan çözer.
 | `hedera.auditTopicId` | | |
 | `property.id` | | |
 
-İlgili sete göre eksik alan varsa → `ENS_CONFIG_INCOMPLETE` (422).
+If any record in the relevant set is missing → `ENS_CONFIG_INCOMPLETE` (422).
 
-**Fallback:** ENS çözümü hata verir/timeout olursa yanıt `"source": "env-fallback"`
-döner ve sunucu konsoluna `ENS config unavailable → env fallback` basılır.
-Yanıt 60 saniye in-memory cache'lenir.
+**Fallback:** if ENS resolution errors or times out, the response comes back with
+`"source": "env-fallback"` and the server console logs `ENS config unavailable → env fallback`.
+Responses are cached in memory for 60 seconds.
 
-**Hatalar:** `ENS_CONFIG_INCOMPLETE` (422), `INVALID_INPUT` (400)
+**Errors:** `ENS_CONFIG_INCOMPLETE` (422), `INVALID_INPUT` (400)
 
 ---
 
 ## `GET /api/audit?propertyId=PROP-002` — Mirror Node timeline
 
-HCS mesajlarını Mirror Node'dan okur, base64 çözer, kronolojik döner.
+Reads the HCS messages from Mirror Node, base64-decodes them, and returns them chronologically.
 
 **Response 200**
 
@@ -548,14 +550,16 @@ HCS mesajlarını Mirror Node'dan okur, base64 çözer, kronolojik döner.
 }
 ```
 
-Mirror gecikmesi normaldir; olay henüz görünmüyorsa liste kısa döner (hata değil).
+Mirror Node lag is expected; if an event has not surfaced yet the list simply comes back
+shorter (this is not an error).
 
 ---
 
-## `POST /api/seed` — Demo state kurulumu (yalnız development)
+## `POST /api/seed` — Demo state setup (development only)
 
-`PROP-001`'i `TOKENIZED` state'te, geçerli `tokenId` ile store'a yazar; `buyer1`'e KYC
-verir, `nokyc` hesabını token'a **associate eder ama KYC vermez** (altın sahne için şart).
+Writes `PROP-001` into the store in the `TOKENIZED` state with a valid `tokenId`, grants KYC
+to `buyer1`, and **associates the `nokyc` account with the token but does not grant it KYC**
+(essential for the golden moment).
 
 **Response 200**
 
@@ -563,19 +567,19 @@ verir, `nokyc` hesabını token'a **associate eder ama KYC vermez** (altın sahn
 { "seeded": true, "properties": ["PROP-001"], "tokenId": "0.0.222111", "elapsedMs": 2400 }
 ```
 
-## `POST /api/reset` — Store'u temizler (yalnız development)
+## `POST /api/reset` — Clears the store (development only)
 
 ```json
 { "reset": true }
 ```
 
-Her ikisi de production'da `404` döner.
+Both endpoints return `404` in production.
 
 ---
 
-# Kiralama (RENTAL) endpoint'leri
+# Rental (RENTAL) endpoints
 
-## `POST /api/rental/list` — İlan
+## `POST /api/rental/list` — Create a listing
 
 **Request**
 
@@ -588,7 +592,8 @@ Her ikisi de production'da `404` döner.
 }
 ```
 
-`reqDeposit` HBAR cinsinden. Landlord kapısı = Selfie session (satıcı onboarding'iyle aynı).
+`reqDeposit` is denominated in HBAR. The landlord gate is the Selfie session (identical to
+seller onboarding).
 
 **Response 200**
 
@@ -602,15 +607,15 @@ Her ikisi de production'da `404` döner.
 }
 ```
 
-**Hatalar:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
-`PROPERTY_NOT_FOUND` (404), `RENTAL_NOT_APPROVED` (422 — mülk `APPROVED` değil ya da
-zaten `TOKENIZED`)
+**Errors:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
+`PROPERTY_NOT_FOUND` (404), `RENTAL_NOT_APPROVED` (422 — the property is not `APPROVED`, or
+it is already `TOKENIZED`)
 
 **HCS:** `RENTAL_LISTED`
 
 ---
 
-## `POST /api/rental/apply` — Kiracı başvurusu
+## `POST /api/rental/apply` — Tenant application
 
 **Request**
 
@@ -624,10 +629,11 @@ zaten `TOKENIZED`)
 }
 ```
 
-> `verify-tenant`, buyer action'ından **ayrıdır** — nullifier havuzu izole olsun ve aynı
-> test kullanıcısı hem satış hem kiralama akışını gösterebilsin diye.
+> `verify-tenant` is **separate** from the buyer action — so that the nullifier pool stays
+> isolated and the same test user can demonstrate both the sale and the rental flow.
 
-Predicate: yaş uygunluğu (World) + gelir eşiği (`income ≥ 3 × rent`, tam tutar ifşa edilmez).
+Predicate: age eligibility (World) plus an income threshold (`income ≥ 3 × rent`, without
+revealing the exact amount).
 
 **Response 200**
 
@@ -644,16 +650,16 @@ Predicate: yaş uygunluğu (World) + gelir eşiği (`income ≥ 3 × rent`, tam 
 }
 ```
 
-**Hatalar:** `WORLD_PROOF_INVALID` (422), `WORLD_PROOF_REPLAY` (422),
+**Errors:** `WORLD_PROOF_INVALID` (422), `WORLD_PROOF_REPLAY` (422),
 `PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400)
 
-**HCS:** `RENTAL_APPLICATION` — payload yalnız predicate sonucunu taşır, tutar taşımaz.
+**HCS:** `RENTAL_APPLICATION` — the payload carries only the predicate result, never the amount.
 
 ---
 
-## `POST /api/rental/engage` — Depozito kilidi (gerçek HBAR)
+## `POST /api/rental/engage` — Deposit lock (real HBAR)
 
-Landlord başvuruyu kabul eder; tenant'ın HBAR depozitosu escrow'a transfer edilir.
+The landlord accepts the application; the tenant's HBAR deposit is transferred into escrow.
 
 **Request**
 
@@ -675,17 +681,18 @@ Landlord başvuruyu kabul eder; tenant'ın HBAR depozitosu escrow'a transfer edi
 }
 ```
 
-**Hatalar:** `NOT_LANDLORD` (403), `INSUFFICIENT_DEPOSIT` (422),
-`RENTAL_NOT_ENGAGED` (422 — state `APPLIED` değil)
+**Errors:** `NOT_LANDLORD` (403), `INSUFFICIENT_DEPOSIT` (422),
+`RENTAL_NOT_ENGAGED` (422 — state is not `APPLIED`)
 
 **HCS:** `RENTAL_ENGAGED`
 
 ---
 
-## `POST /api/rental/settle` — Temiz iade
+## `POST /api/rental/settle` — Clean refund
 
-Yalnız landlord, yalnız `ENGAGED`, yalnız `now ≤ lockExpiresAt`.
-Depozito **tenant'a geri** döner (kira depozitosu iadesi — landlord'a ödeme değil).
+Landlord only, `ENGAGED` state only, and only while `now ≤ lockExpiresAt`.
+The deposit goes **back to the tenant** (this is a rental deposit return, not a payout to the
+landlord).
 
 **Request**
 
@@ -707,17 +714,18 @@ Depozito **tenant'a geri** döner (kira depozitosu iadesi — landlord'a ödeme 
 }
 ```
 
-**Hatalar:** `NOT_LANDLORD` (403), `RENTAL_NOT_ENGAGED` (422), `LOCK_EXPIRED` (422)
+**Errors:** `NOT_LANDLORD` (403), `RENTAL_NOT_ENGAGED` (422), `LOCK_EXPIRED` (422)
 
 **HCS:** `RENTAL_SETTLED`
 
 ---
 
-## `POST /api/rental/expire` — Süre dolumu (iade + slash)
+## `POST /api/rental/expire` — Lock expiry (refund + slash)
 
-`now > lockExpiresAt` ve state `ENGAGED` ise **herkes** çağırabilir (permissionless).
-Depozito tenant'a iade edilir **ve** landlord teminatından sabit oran kesilir.
-`settle`'dan farkı budur: temiz iade değil, iade + landlord cezası.
+Once `now > lockExpiresAt` and the state is `ENGAGED`, **anyone** may call this
+(permissionless). The deposit is refunded to the tenant **and** a fixed percentage is slashed
+from the landlord's collateral. That is what separates it from `settle`: not a clean refund,
+but a refund plus a landlord penalty.
 
 **Request**
 
@@ -740,17 +748,17 @@ Depozito tenant'a iade edilir **ve** landlord teminatından sabit oran kesilir.
 }
 ```
 
-**Hatalar:** `RENTAL_NOT_ENGAGED` (422), `LOCK_NOT_EXPIRED` (409 — süre dolmadan denendi)
+**Errors:** `RENTAL_NOT_ENGAGED` (422), `LOCK_NOT_EXPIRED` (409 — called before the lock expired)
 
 **HCS:** `RENTAL_EXPIRED`
 
 ---
 
-# Frontend metod adı ↔ path eşlemesi
+# Frontend method name ↔ path mapping
 
-`lib/mockApi.ts` ve `lib/realApi.ts` aynı interface'i uygular:
+`lib/mockApi.ts` and `lib/realApi.ts` implement the same interface:
 
-| Metod | Path |
+| Method | Path |
 |---|---|
 | `onboardSeller` | `POST /api/onboard` |
 | `submitProperty` | `POST /api/attest` |

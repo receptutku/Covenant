@@ -19,7 +19,7 @@ export type AllowedFileType = (typeof ALLOWED_FILE_TYPES)[number]
 export const MAX_FILES = 3
 export const MAX_FILE_BYTES = 5 * 1024 * 1024
 
-/** Yükleme sonrası saklanan belge. `bytes` private; API üzerinden asla dönmez. */
+/** A document retained after upload. `bytes` is private; it is never returned over the API. */
 export type StoredFile = {
   name: string
   type: AllowedFileType
@@ -27,7 +27,7 @@ export type StoredFile = {
   bytes: Buffer
 }
 
-/** Verifier'ın Ed25519 ile imzaladığı sahiplik beyanı. */
+/** The ownership attestation signed by the verifier with Ed25519. */
 export type OwnershipAttestation = {
   propertyId: string
   sellerAccountId: string
@@ -50,10 +50,10 @@ export type Property = {
   submittedAt?: string
   decidedAt?: string
   rejectionReason?: string
-  /** Belgelerin salted Merkle kökü (hex). Zincire yalnız bu çıkar. */
+  /** Salted Merkle root of the documents (hex). This is the only thing that goes on-chain. */
   documentRoot?: string
   documentCount: number
-  /** Private: belge byte'ları ve salt'lar. Yalnız sunucu belleğinde. */
+  /** Private: document bytes and salts. Server memory only. */
   files: StoredFile[]
   commitments: DocumentCommitment[]
   attestation?: OwnershipAttestation
@@ -61,9 +61,9 @@ export type Property = {
 }
 
 /**
- * Selfie Check sonrası üretilen opak oturum.
- * Token World nullifier DEĞİLDİR — randomBytes(32). Nullifier hiçbir yerde saklanmaz;
- * replay kontrolü ayrı bir HMAC digest kümesiyle yapılır.
+ * Opaque session issued after Selfie Check.
+ * The token is NOT the World nullifier — it is randomBytes(32). The nullifier is never
+ * stored anywhere; replay protection is handled by a separate set of HMAC digests.
  */
 export type SellerSession = {
   token: string
@@ -76,9 +76,9 @@ export type Rental = {
   propertyId: string
   landlordAccountId: string
   tenantAccountId?: string
-  /** İstenen depozito (HBAR). */
+  /** Requested deposit (HBAR). */
   reqDeposit: number
-  /** Fiilen kilitlenen depozito (HBAR). ENGAGED'e kadar undefined. */
+  /** Deposit actually locked (HBAR). Undefined until ENGAGED. */
   deposit?: number
   lockWindowSeconds: number
   lockExpiresAt?: string
@@ -90,7 +90,7 @@ export type Rental = {
   slashed?: number
 }
 
-/** HashScan linki üretmek için tutulan işlem kaydı. */
+/** Transaction record kept so we can build a HashScan link. */
 export type HederaTransactionRecord = {
   transactionId: string
   kind:
@@ -106,7 +106,7 @@ export type HederaTransactionRecord = {
   hashscanUrl: string
 }
 
-/** docs/API.md §2 — Akif'in timeline'ı bu isimleri okur; değiştirme. */
+/** docs/API.md §2 — Akif's timeline reads these names; do not change them. */
 export const HCS_EVENTS = {
   SELLER_ONBOARDED: 'SELLER_ONBOARDED',
   PROPERTY_SUBMITTED: 'PROPERTY_SUBMITTED',

@@ -4,16 +4,16 @@ import { hashscanUrl, withClient } from '../lib/hedera/client'
 import { createAuditTopic } from '../lib/hedera/topic'
 
 /**
- * Bir kereye mahsus altyapı: HCS denetim topic'i.
+ * One-time infrastructure: the HCS audit topic.
  *
- * Topic tüm mülkler için ortaktır — her mülke ayrı topic açmak demoyu yavaşlatır ve
- * Mirror Node'da tek bir kronolojik zaman çizelgesi göstermeyi zorlaştırır. Olaylar
- * zarftaki `propertyId` ile ayrıştırılır.
+ * A single topic is shared by every property — opening a separate topic per property would
+ * slow the demo down and make it hard to show one chronological timeline on Mirror Node.
+ * Events are told apart by the `propertyId` in the envelope.
  */
 async function main() {
   if (process.env.AUDIT_TOPIC_ID?.trim()) {
-    console.log('Topic zaten var:', process.env.AUDIT_TOPIC_ID)
-    console.log('Yeniden oluşturmak için .env.local içindeki AUDIT_TOPIC_ID satırını boşalt.')
+    console.log('Topic already exists:', process.env.AUDIT_TOPIC_ID)
+    console.log('To create a new one, clear the AUDIT_TOPIC_ID line in .env.local.')
     return
   }
 
@@ -25,10 +25,10 @@ async function main() {
   const path = '.env.local'
   const content = readFileSync(path, 'utf8')
   writeFileSync(path, content.replace(/^AUDIT_TOPIC_ID=.*$/m, `AUDIT_TOPIC_ID=${topicId}`))
-  console.log('✅ .env.local güncellendi.')
+  console.log('✅ .env.local updated.')
 }
 
 main().catch((error) => {
-  console.error('\n❌ Bootstrap başarısız:', error instanceof Error ? error.message : error)
+  console.error('\n❌ Bootstrap failed:', error instanceof Error ? error.message : error)
   process.exit(1)
 })

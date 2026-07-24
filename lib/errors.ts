@@ -1,19 +1,19 @@
 /**
- * Stabil hata kodları — docs/API.md §1 ile birebir aynı.
+ * Stable error codes — an exact mirror of docs/API.md §1.
  *
- * Bu liste KAPALIDIR. Yeni kod eklemek docs/API.md'deki KONTRAT-SÜRÜM'ü artırır ve
- * Akif'e haber verilmesini gerektirir. UI mantığı yalnız `code` alanına bakar;
- * `error` metni serbestçe değişebilir.
+ * This list is CLOSED. Adding a new code bumps the CONTRACT-VERSION in docs/API.md and
+ * requires notifying Akif. UI logic only ever branches on `code`; the `error` text is
+ * free to change at any time.
  */
 export const ERROR_CODES = [
-  // Oturum / seller
+  // Session / seller
   'SELLER_SESSION_REQUIRED',
   'SELLER_SESSION_EXPIRED',
-  // Belge yükleme
+  // Document upload
   'TOO_MANY_FILES',
   'FILE_TOO_LARGE',
   'UNSUPPORTED_FILE_TYPE',
-  // Property / sahiplik
+  // Property / ownership
   'PROPERTY_NOT_FOUND',
   'OWNERSHIP_PENDING',
   'OWNERSHIP_REJECTED',
@@ -28,14 +28,14 @@ export const ERROR_CODES = [
   'WORLD_PROOF_REPLAY',
   // ENS
   'ENS_CONFIG_INCOMPLETE',
-  // Kiralama
+  // Rental
   'RENTAL_NOT_APPROVED',
   'RENTAL_NOT_ENGAGED',
   'LOCK_EXPIRED',
   'LOCK_NOT_EXPIRED',
   'INSUFFICIENT_DEPOSIT',
   'NOT_LANDLORD',
-  // Genel
+  // General
   'INVALID_INPUT',
   'UNAUTHORIZED',
   'INTERNAL_ERROR',
@@ -43,7 +43,7 @@ export const ERROR_CODES = [
 
 export type ErrorCode = (typeof ERROR_CODES)[number]
 
-/** Her koda karşılık gelen HTTP durumu — docs/API.md §0 tablosuyla aynı. */
+/** The HTTP status for each code — matches the table in docs/API.md §0. */
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   SELLER_SESSION_REQUIRED: 401,
   SELLER_SESSION_EXPIRED: 401,
@@ -73,10 +73,10 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
 }
 
 /**
- * API katmanının fırlattığı tek hata tipi.
+ * The single error type thrown by the API layer.
  *
- * `extra` yalnız vitrin alanları içindir (örn. `hederaStatus`, `tokenId`) — asla proof,
- * nullifier, salt, private key ya da ham SDK nesnesi konmaz.
+ * `extra` is for display-only fields (e.g. `hederaStatus`, `tokenId`) — never put a proof,
+ * nullifier, salt, private key, or raw SDK object in it.
  */
 export class ApiError extends Error {
   readonly code: ErrorCode

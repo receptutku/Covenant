@@ -1,25 +1,25 @@
 import { createHash, randomBytes } from 'node:crypto'
 
 /**
- * Salted, domain-separated belge taahhüdü ve Merkle ağacı.
+ * Salted, domain-separated document commitments and Merkle tree.
  *
- * Amaç: n belgeden yalnız birini O(log n) kanıtla açabilmek, diğerlerini gizli tutmak.
- * Zincire (HCS) yalnız kök ve belge sayısı yazılır — belge byte'ları ve salt sunucuda
- * private kalır.
+ * Goal: reveal exactly one of n documents with an O(log n) proof while keeping the rest
+ * hidden. Only the root and the document count are written on-chain (HCS) — the document
+ * bytes and salts stay private on the server.
  *
- * Şema (docs/API.md ile aynı):
+ * Scheme (matches docs/API.md):
  *   fileHash   = SHA-256(fileBytes)
  *   salt       = randomBytes(32)
  *   commitment = SHA-256("PPREV_DOC_V1" || len(propertyId) || propertyId || index || salt || fileHash)
  *   leaf       = SHA-256(0x00 || commitment)
  *   parent     = SHA-256(0x01 || left || right)
  *
- * Neden 0x00 / 0x01 önekleri: yaprak ile iç düğüm hash uzayları ayrışır. Bu olmadan bir
- * saldırgan bir iç düğümü yaprakmış gibi sunarak sahte üyelik kanıtı üretebilir
- * (ikinci-preimage saldırısı).
+ * Why the 0x00 / 0x01 prefixes: they separate the leaf and internal-node hash spaces.
+ * Without them an attacker could present an internal node as if it were a leaf and forge
+ * a membership proof (second-preimage attack).
  *
- * Neden salt: aynı belge farklı mülklerde farklı commitment üretir, yani kök üzerinden
- * "bu iki ilanda aynı tapu mu var?" diye bakılamaz.
+ * Why the salt: the same document yields a different commitment under a different property,
+ * so nobody can use the root to ask "do these two listings share the same title deed?".
  */
 
 const DOMAIN_DOC = 'PPREV_DOC_V1'
@@ -49,8 +49,8 @@ export function hashFile(fileBytes: Buffer): Buffer {
 }
 
 /**
- * Tek belgenin taahhüdü. propertyId uzunluk-önekli yazılır, aksi halde
- * ("PROP-1", 23) ile ("PROP-12", 3) gibi çiftler aynı byte dizisine çözülebilirdi.
+ * Commitment for a single document. propertyId is length-prefixed; otherwise pairs like
+ * ("PROP-1", 23) and ("PROP-12", 3) would serialize to the same byte string.
  */
 export function commitDocument(
   propertyId: string,
@@ -78,12 +78,12 @@ function parentHash(left: Buffer, right: Buffer): Buffer {
 }
 
 /**
- * Tek sayıda düğüm kalırsa son düğüm bir üst seviyeye olduğu gibi taşınır (promote).
- * Yaygın alternatif olan "son düğümü kopyala" yaklaşımı, tek yaprakla iki yapraklı bir
- * ağacın aynı kökü üretmesine yol açar; promote bunu önler.
+ * When a level has an odd number of nodes, the last one is carried up to the next level
+ * unchanged (promoted). The common alternative — duplicating the last node — makes a
+ * one-leaf tree and a two-leaf tree produce the same root; promoting avoids that.
  */
 function buildLevels(leaves: Buffer[]): Buffer[][] {
-  if (leaves.length === 0) throw new Error('merkle: en az bir yaprak gerekir')
+  if (leaves.length === 0) throw new Error('merkle: at least one leaf is required')
   const levels: Buffer[][] = [leaves]
   let current = leaves
   while (current.length > 1) {
@@ -106,9 +106,9 @@ export function merkleRoot(leaves: Buffer[]): Buffer {
 
 export type ProofStep = { hash: string; position: 'left' | 'right' }
 
-/** index'inci yaprağın kök yolundaki kardeş hash'leri. Promote edilen seviyelerde adım yok. */
+/** Sibling hashes along the root path of the leaf at `index`. Promoted levels add no step. */
 export function merkleProof(leaves: Buffer[], index: number): ProofStep[] {
-  if (index < 0 || index >= leaves.length) throw new Error('merkle: index aralık dışı')
+  if (index < 0 || index >= leaves.length) throw new Error('merkle: index out of range')
   const levels = buildLevels(leaves)
   const proof: ProofStep[] = []
   let idx = index
@@ -141,7 +141,7 @@ export function verifyMerkleProof(leaf: Buffer, proof: ProofStep[], root: Buffer
 
 export type DocumentCommitment = {
   index: number
-  /** Sunucuda private kalır; asla yanıtta, HCS'de veya logda yer almaz. */
+  /** Stays private on the server; never appears in a response, on HCS, or in a log. */
   salt: Buffer
   fileHash: Buffer
   commitment: Buffer
@@ -149,8 +149,8 @@ export type DocumentCommitment = {
 }
 
 /**
- * Bir mülkün tüm belgelerini taahhüde çevirip kökü üretir.
- * Dönen `commitments` private saklanır; dışarı yalnız `root` ve `documentCount` çıkar.
+ * Turns every document of a property into a commitment and derives the root.
+ * The returned `commitments` are kept private; only `root` and `documentCount` leave the server.
  */
 export function buildDocumentTree(
   propertyId: string,

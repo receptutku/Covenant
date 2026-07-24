@@ -4,15 +4,16 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { getOperator, hashscanUrl, withClient } from '../lib/hedera/client'
 
 /**
- * Demo hesaplarını üretir ve `.env.local`'a yazar.
+ * Generates the demo accounts and writes them to `.env.local`.
  *
- * Recep portaldan yalnız operator'ı açar; kalan üç hesap buradan gelir:
- *   buyer1 — birincil alıcı (satışta KYC'li alıcı, kiralamada tenant)
- *   buyer2 — ikincil alıcı (secondary transfer + fractional fee sahnesi)
- *   nokyc  — token'a associate EDİLİR ama KYC ALMAZ (ağ seviyesi red sahnesi)
+ * The operator is the only account opened through the Hedera portal; the remaining three
+ * come from this script:
+ *   buyer1 — primary buyer (the KYC'd buyer in a sale, the tenant in a rental)
+ *   buyer2 — secondary buyer (the secondary transfer + fractional fee scene)
+ *   nokyc  — IS associated with the token but is NEVER granted KYC (network-level rejection scene)
  *
- * Anahtarlar ED25519 üretilir; operator ECDSA olsa da `parseKey()` her ikisini de
- * DER başlığından çözdüğü için karışım sorun çıkarmaz.
+ * The keys are generated as ED25519; even though the operator is ECDSA, the mix causes no
+ * trouble because `parseKey()` resolves both from the DER header.
  */
 
 const ACCOUNTS = [
@@ -33,14 +34,14 @@ async function main() {
 
       const receipt = await (
         await new AccountCreateTransaction()
-          // setKey() deprecated — alias'sız hesap istiyoruz (EVM adresi gerekmiyor).
+          // setKey() is deprecated — we want an account without an alias (no EVM address needed).
           .setKeyWithoutAlias(privateKey.publicKey)
           .setInitialBalance(new Hbar(spec.initialHbar))
           .execute(client)
       ).getReceipt(client)
 
       const accountId = receipt.accountId
-      if (!accountId) throw new Error(`${spec.name} hesabı oluşturulamadı`)
+      if (!accountId) throw new Error(`Failed to create the ${spec.name} account`)
 
       console.log(
         `✅ ${spec.name.padEnd(6)} ${accountId.toString().padEnd(12)} ${spec.initialHbar} ℏ  ${hashscanUrl('account', accountId.toString())}`,
@@ -49,7 +50,7 @@ async function main() {
       created.push({
         name: spec.name,
         id: accountId.toString(),
-        // DER export — parseKey() bunu doğrudan çözer.
+        // DER export — parseKey() reads this directly.
         key: privateKey.toStringDer(),
       })
     }
@@ -62,12 +63,13 @@ async function main() {
     ]),
   )
 
-  console.log('\n✅ .env.local güncellendi. Anahtarlar konsola basılmadı.')
+  console.log('\n✅ .env.local updated. Keys were not printed to the console.')
 }
 
 /**
- * `.env.local` içindeki anahtarları yerinde günceller.
- * Dosyayı baştan yazmıyoruz — mevcut World/ENS/verifier değerleri korunmalı.
+ * Updates the keys inside `.env.local` in place.
+ * We don't rewrite the file from scratch — the existing World/ENS/verifier values must be
+ * preserved.
  */
 function writeEnvValues(entries: readonly (readonly [string, string])[]) {
   const path = '.env.local'
@@ -83,6 +85,6 @@ function writeEnvValues(entries: readonly (readonly [string, string])[]) {
 }
 
 main().catch((error) => {
-  console.error('\n❌ Hesap oluşturma başarısız:', error instanceof Error ? error.message : error)
+  console.error('\n❌ Account creation failed:', error instanceof Error ? error.message : error)
   process.exit(1)
 })
