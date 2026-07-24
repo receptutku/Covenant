@@ -14,7 +14,10 @@
     "tamper": "tsx scripts/tamper-test.ts",
     "e2e:sale": "tsx scripts/e2e-sale.ts",
     "e2e:rental": "tsx scripts/e2e-rental.ts",
-    "dev:noworld": "WORLD_RP_ID= WORLD_SIGNING_KEY= next dev -p 3002"
+    "dev:noworld": "WORLD_RP_ID= WORLD_SIGNING_KEY= next dev -p 3002",
+    "ens:check": "tsx scripts/ens-check.ts",
+    "ens:register": "tsx scripts/ens-register.ts",
+    "ens:write": "tsx scripts/ens-write.ts"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",
