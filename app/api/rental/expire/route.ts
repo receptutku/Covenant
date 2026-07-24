@@ -13,6 +13,7 @@ import {
 import { rentalExpireSchema } from '@/lib/schemas'
 import { putRental } from '@/lib/store'
 import { HCS_EVENTS } from '@/lib/types'
+import { withLock } from '@/lib/lock'
 
 /**
  * The lock window lapsed without a settlement: the tenant is made whole and the landlord
@@ -35,40 +36,47 @@ import { HCS_EVENTS } from '@/lib/types'
 export const POST = handler(async (request) => {
   const body = await parseBody(request, rentalExpireSchema)
 
-  const rental = requireRental(body.listingId)
-  requireState(rental, 'ENGAGED')
-  assertLockLapsed(rental)
+  // Serialized per listing, and this endpoint needs it most: it is permissionless, so
+  // anyone can fire it and nothing upstream throttles the caller. Concurrent calls would
+  // both see ENGAGED and both pay out deposit + slash, taking the landlord's penalty twice.
+  // Queued, the second call finds EXPIRED and is rejected. The key is shared with
+  // engage/settle so an expire cannot interleave with a settle on the same escrow.
+  return withLock(`rental:${body.listingId}`, async () => {
+    const rental = requireRental(body.listingId)
+    requireState(rental, 'ENGAGED')
+    assertLockLapsed(rental)
 
-  const tenant = rental.tenantAccountId ?? tenantAccount().accountId.toString()
-  const deposit = rental.deposit ?? rental.reqDeposit
-  const slashed = slashAmount(deposit)
+    const tenant = rental.tenantAccountId ?? tenantAccount().accountId.toString()
+    const deposit = rental.deposit ?? rental.reqDeposit
+    const slashed = slashAmount(deposit)
 
-  const payout = await transferHbar({
-    from: escrowAccount(),
-    to: tenant,
-    amount: deposit + slashed,
-    memo: `PPREV escrow expiry ${rental.listingId}`,
-    propertyId: rental.propertyId,
-  })
+    const payout = await transferHbar({
+      from: escrowAccount(),
+      to: tenant,
+      amount: deposit + slashed,
+      memo: `PPREV escrow expiry ${rental.listingId}`,
+      propertyId: rental.propertyId,
+    })
 
-  putRental({ ...rental, state: 'EXPIRED', slashed, settleTxId: payout.transactionId })
+    putRental({ ...rental, state: 'EXPIRED', slashed, settleTxId: payout.transactionId })
 
-  await submitEventSafe(HCS_EVENTS.RENTAL_EXPIRED, rental.propertyId, {
-    listingId: rental.listingId,
-    refunded: deposit,
-    slashed,
-    slashRateBps: SLASH_RATE_BPS,
-    transactionId: payout.transactionId,
-  })
+    await submitEventSafe(HCS_EVENTS.RENTAL_EXPIRED, rental.propertyId, {
+      listingId: rental.listingId,
+      refunded: deposit,
+      slashed,
+      slashRateBps: SLASH_RATE_BPS,
+      transactionId: payout.transactionId,
+    })
 
-  return jsonResponse({
-    listingId: rental.listingId,
-    state: 'EXPIRED',
-    refunded: deposit,
-    to: tenant,
-    slashed,
-    slashRateBps: SLASH_RATE_BPS,
-    transactionId: payout.transactionId,
-    hashscanUrl: payout.hashscanUrl,
+    return jsonResponse({
+      listingId: rental.listingId,
+      state: 'EXPIRED',
+      refunded: deposit,
+      to: tenant,
+      slashed,
+      slashRateBps: SLASH_RATE_BPS,
+      transactionId: payout.transactionId,
+      hashscanUrl: payout.hashscanUrl,
+    })
   })
 })

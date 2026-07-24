@@ -27,6 +27,13 @@ import {
 
 const CACHE_TTL_MS = 60_000
 
+/**
+ * Fallback results are cached far more briefly than live ones. Caching a degraded
+ * response for a full minute would keep the UI showing "env-fallback" long after Sepolia
+ * recovered — the demo would look broken while the system was already healthy again.
+ */
+const FALLBACK_CACHE_TTL_MS = 8_000
+
 export type EnsConfig = {
   name: string
   mode: 'SALE' | 'RENTAL'
@@ -173,6 +180,7 @@ export async function readEnsConfig(propertyId: string): Promise<EnsConfig> {
     records,
   }
 
-  cache().set(name, { config, expiresAt: Date.now() + CACHE_TTL_MS })
+  const ttl = source === 'ens' ? CACHE_TTL_MS : FALLBACK_CACHE_TTL_MS
+  cache().set(name, { config, expiresAt: Date.now() + ttl })
   return config
 }

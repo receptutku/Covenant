@@ -6,6 +6,7 @@ import { submitEventSafe } from '@/lib/hedera/topic'
 import { requireProperty } from '@/lib/property'
 import { buySchema } from '@/lib/schemas'
 import { HCS_EVENTS } from '@/lib/types'
+import { withLock } from '@/lib/lock'
 
 /**
  * Share transfer — and the two compliance scenes that carry the demo.
@@ -24,46 +25,53 @@ import { HCS_EVENTS } from '@/lib/types'
  */
 export const POST = handler(async (request) => {
   const body = await parseBody(request, buySchema)
-  const property = requireProperty(body.propertyId)
 
-  if (!property.tokenId) {
-    throw new ApiError(
-      'PROPERTY_NOT_FOUND',
-      'This property has no token yet — it must be tokenized first.',
-    )
-  }
+  // Serialized per property and mode: a double-clicked buy would send the shares twice, and
+  // because each mode has a fixed sender, the two transfers race on the same balance — the
+  // second either overdraws or lands after the fee scene has already been narrated, leaving
+  // holdings that no longer match what the demo just claimed on screen.
+  return withLock(`buy:${body.propertyId}:${body.mode}`, async () => {
+    const property = requireProperty(body.propertyId)
 
-  const { from, to } = resolveParties(body.mode, body.buyerAccountId)
+    if (!property.tokenId) {
+      throw new ApiError(
+        'PROPERTY_NOT_FOUND',
+        'This property has no token yet — it must be tokenized first.',
+      )
+    }
 
-  const result = await transferShares({
-    tokenId: property.tokenId,
-    from,
-    to,
-    amount: body.amount,
-  })
+    const { from, to } = resolveParties(body.mode, body.buyerAccountId)
 
-  // Only successful transfers are recorded. A rejected transfer throws before this point,
-  // which is deliberate: the audit trail should not imply a transfer that never happened.
-  await submitEventSafe(HCS_EVENTS.TOKEN_TRANSFERRED, property.propertyId, {
-    tokenId: property.tokenId,
-    amount: body.amount,
-    from: from.accountId.toString(),
-    to,
-    mode: body.mode,
-    transactionId: result.transactionId,
-    assessedFeeTotal: result.assessedCustomFees.reduce((sum, fee) => sum + fee.amount, 0),
-  })
+    const result = await transferShares({
+      tokenId: property.tokenId,
+      from,
+      to,
+      amount: body.amount,
+    })
 
-  return jsonResponse({
-    transferred: true,
-    tokenId: property.tokenId,
-    amount: body.amount,
-    from: from.accountId.toString(),
-    to,
-    mode: body.mode,
-    transactionId: result.transactionId,
-    assessedCustomFees: result.assessedCustomFees,
-    hashscanUrl: result.hashscanUrl,
+    // Only successful transfers are recorded. A rejected transfer throws before this point,
+    // which is deliberate: the audit trail should not imply a transfer that never happened.
+    await submitEventSafe(HCS_EVENTS.TOKEN_TRANSFERRED, property.propertyId, {
+      tokenId: property.tokenId,
+      amount: body.amount,
+      from: from.accountId.toString(),
+      to,
+      mode: body.mode,
+      transactionId: result.transactionId,
+      assessedFeeTotal: result.assessedCustomFees.reduce((sum, fee) => sum + fee.amount, 0),
+    })
+
+    return jsonResponse({
+      transferred: true,
+      tokenId: property.tokenId,
+      amount: body.amount,
+      from: from.accountId.toString(),
+      to,
+      mode: body.mode,
+      transactionId: result.transactionId,
+      assessedCustomFees: result.assessedCustomFees,
+      hashscanUrl: result.hashscanUrl,
+    })
   })
 })
 

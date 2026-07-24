@@ -61,9 +61,43 @@ export function decodeFiles(files: IncomingFile[]): StoredFile[] {
         `"${file.name}" is ${(bytes.length / 1024 / 1024).toFixed(1)} MB; the limit is 5 MB.`,
       )
     }
+    assertMagicBytes(file.name, file.type, bytes)
 
     return { name: file.name, type: file.type, sizeBytes: bytes.length, bytes }
   })
+}
+
+/** File signatures for the three types we accept. */
+const MAGIC_BYTES: Record<AllowedFileType, { prefix: number[]; label: string }> = {
+  'application/pdf': { prefix: [0x25, 0x50, 0x44, 0x46], label: 'PDF' }, // %PDF
+  'image/png': { prefix: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], label: 'PNG' },
+  'image/jpeg': { prefix: [0xff, 0xd8, 0xff], label: 'JPEG' },
+}
+
+/**
+ * Checks the declared MIME type against the file's actual signature.
+ *
+ * The `type` field is client-supplied, so on its own it asserts nothing: any bytes could
+ * arrive labelled `application/pdf`. That matters here beyond ordinary hygiene — a
+ * document commitment is only meaningful if what was committed to is the kind of document
+ * the seller claimed to submit. A verifier reviewing "the title deed" should not be shown
+ * a file whose declared type and real content disagree.
+ *
+ * This is a signature check, not content validation: it proves the bytes begin like a PDF,
+ * not that the PDF says anything true. Provenance remains the roadmap's job.
+ */
+function assertMagicBytes(name: string, type: AllowedFileType, bytes: Buffer): void {
+  const expected = MAGIC_BYTES[type]
+  const matches =
+    bytes.length >= expected.prefix.length &&
+    expected.prefix.every((byte, index) => bytes[index] === byte)
+
+  if (!matches) {
+    throw new ApiError(
+      'UNSUPPORTED_FILE_TYPE',
+      `"${name}" is declared as ${expected.label} but its content does not match that format.`,
+    )
+  }
 }
 
 /** Builds the salted, domain-separated Merkle commitment for a property's documents. */

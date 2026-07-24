@@ -6,6 +6,7 @@ import { tokenizeSchema } from '@/lib/schemas'
 import { putProperty } from '@/lib/store'
 import { HCS_EVENTS } from '@/lib/types'
 import { assertAttestationValid } from '@/lib/verifier/attestation'
+import { withLock } from '@/lib/lock'
 
 /**
  * The security gate between a reviewed property and an on-chain asset.
@@ -26,33 +27,38 @@ import { assertAttestationValid } from '@/lib/verifier/attestation'
 export const POST = handler(async (request) => {
   const body = await parseBody(request, tokenizeSchema)
 
-  const property = requireProperty(body.propertyId)
-  assertTokenizable(property)
-  assertAttestationValid(body.attestation, property)
+  // Serialized per property: without this, two concurrent requests both saw APPROVED and
+  // both minted, putting two real tokens on-chain for one property. Reproduced with a
+  // parallel curl — a double-clicked button does the same.
+  return withLock(`tokenize:${body.propertyId}`, async () => {
+    const property = requireProperty(body.propertyId)
+    assertTokenizable(property)
+    assertAttestationValid(body.attestation, property)
 
-  const token = await createPropertyToken({
-    propertyId: property.propertyId,
-    displayName: property.displayName,
-    tokenSymbol: property.tokenSymbol,
-  })
+    const token = await createPropertyToken({
+      propertyId: property.propertyId,
+      displayName: property.displayName,
+      tokenSymbol: property.tokenSymbol,
+    })
 
-  putProperty({ ...property, state: 'TOKENIZED', tokenId: token.tokenId })
+    putProperty({ ...property, state: 'TOKENIZED', tokenId: token.tokenId })
 
-  await submitEventSafe(HCS_EVENTS.PROPERTY_TOKEN_CREATED, property.propertyId, {
-    tokenId: token.tokenId,
-    totalSupply: token.totalSupply,
-    decimals: token.decimals,
-    fractionalFeeBps: token.fractionalFeeBps,
-    transactionId: token.transactionId,
-  })
+    await submitEventSafe(HCS_EVENTS.PROPERTY_TOKEN_CREATED, property.propertyId, {
+      tokenId: token.tokenId,
+      totalSupply: token.totalSupply,
+      decimals: token.decimals,
+      fractionalFeeBps: token.fractionalFeeBps,
+      transactionId: token.transactionId,
+    })
 
-  return jsonResponse({
-    propertyId: property.propertyId,
-    state: 'TOKENIZED',
-    tokenId: token.tokenId,
-    totalSupply: token.totalSupply,
-    decimals: token.decimals,
-    fractionalFeeBps: token.fractionalFeeBps,
-    hashscanUrl: token.hashscanUrl,
+    return jsonResponse({
+      propertyId: property.propertyId,
+      state: 'TOKENIZED',
+      tokenId: token.tokenId,
+      totalSupply: token.totalSupply,
+      decimals: token.decimals,
+      fractionalFeeBps: token.fractionalFeeBps,
+      hashscanUrl: token.hashscanUrl,
+    })
   })
 })

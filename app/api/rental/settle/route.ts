@@ -13,6 +13,7 @@ import { rentalSettleSchema } from '@/lib/schemas'
 import { putRental } from '@/lib/store'
 import { HCS_EVENTS } from '@/lib/types'
 import { requireSellerSession } from '@/lib/world/session'
+import { withLock } from '@/lib/lock'
 
 /**
  * The happy path: the landlord settles inside the lock window and the deposit goes back
@@ -29,40 +30,47 @@ import { requireSellerSession } from '@/lib/world/session'
  */
 export const POST = handler(async (request) => {
   const body = await parseBody(request, rentalSettleSchema)
-  requireSellerSession(body.sellerSessionToken)
 
-  const rental = requireRental(body.listingId)
-  assertIsLandlord(rental)
-  requireState(rental, 'ENGAGED')
-  assertLockActive(rental)
+  // Serialized per listing: concurrent settles would both see ENGAGED and both refund, so
+  // the escrow pays out the deposit twice and drains funds belonging to other listings.
+  // Queued, the second call finds SETTLED and is rejected. The key is shared with
+  // engage/expire, which also stops a settle and an expire from both emptying the escrow.
+  return withLock(`rental:${body.listingId}`, async () => {
+    requireSellerSession(body.sellerSessionToken)
 
-  const tenant = rental.tenantAccountId ?? tenantAccount().accountId.toString()
-  const deposit = rental.deposit ?? rental.reqDeposit
+    const rental = requireRental(body.listingId)
+    assertIsLandlord(rental)
+    requireState(rental, 'ENGAGED')
+    assertLockActive(rental)
 
-  const refund = await transferHbar({
-    from: escrowAccount(),
-    to: tenant,
-    amount: deposit,
-    memo: `PPREV escrow release ${rental.listingId}`,
-    propertyId: rental.propertyId,
-  })
+    const tenant = rental.tenantAccountId ?? tenantAccount().accountId.toString()
+    const deposit = rental.deposit ?? rental.reqDeposit
 
-  putRental({ ...rental, state: 'SETTLED', slashed: 0, settleTxId: refund.transactionId })
+    const refund = await transferHbar({
+      from: escrowAccount(),
+      to: tenant,
+      amount: deposit,
+      memo: `PPREV escrow release ${rental.listingId}`,
+      propertyId: rental.propertyId,
+    })
 
-  await submitEventSafe(HCS_EVENTS.RENTAL_SETTLED, rental.propertyId, {
-    listingId: rental.listingId,
-    refunded: deposit,
-    slashed: 0,
-    transactionId: refund.transactionId,
-  })
+    putRental({ ...rental, state: 'SETTLED', slashed: 0, settleTxId: refund.transactionId })
 
-  return jsonResponse({
-    listingId: rental.listingId,
-    state: 'SETTLED',
-    refunded: deposit,
-    to: tenant,
-    slashed: 0,
-    transactionId: refund.transactionId,
-    hashscanUrl: refund.hashscanUrl,
+    await submitEventSafe(HCS_EVENTS.RENTAL_SETTLED, rental.propertyId, {
+      listingId: rental.listingId,
+      refunded: deposit,
+      slashed: 0,
+      transactionId: refund.transactionId,
+    })
+
+    return jsonResponse({
+      listingId: rental.listingId,
+      state: 'SETTLED',
+      refunded: deposit,
+      to: tenant,
+      slashed: 0,
+      transactionId: refund.transactionId,
+      hashscanUrl: refund.hashscanUrl,
+    })
   })
 })
