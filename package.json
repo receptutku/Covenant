@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "accounts:create": "tsx scripts/create-accounts.ts",
+    "bootstrap": "tsx scripts/bootstrap.ts",
+    "golden": "tsx scripts/golden-scenes.ts"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",
