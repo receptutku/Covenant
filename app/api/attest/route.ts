@@ -1,4 +1,5 @@
 import { handler, jsonResponse, parseBody } from '@/lib/api'
+import { ApiError } from '@/lib/errors'
 import { submitEventSafe } from '@/lib/hedera/topic'
 import { commitDocuments, decodeFiles } from '@/lib/property'
 import { attestSchema } from '@/lib/schemas'
@@ -20,11 +21,24 @@ export const POST = handler(async (request) => {
   const body = await parseBody(request, attestSchema)
   requireSellerSession(body.sellerSessionToken)
 
+  const existing = getProperty(body.propertyId)
+
+  // A tokenized property is final. Without this guard a resubmission would flip it back
+  // to PENDING_REVIEW while its token keeps existing on-chain — and since the seeded
+  // PROP-001 is exactly such a property, one stray upload against its id would kill the
+  // secondary-fee and KYC-rejection scenes mid-demo.
+  if (existing?.state === 'TOKENIZED') {
+    throw new ApiError(
+      'ALREADY_TOKENIZED',
+      'This property is already tokenized; its document set can no longer be replaced.',
+      { tokenId: existing.tokenId },
+    )
+  }
+
   const files = decodeFiles(body.files)
   const { root, commitments } = commitDocuments(body.propertyId, files)
 
   const now = new Date().toISOString()
-  const existing = getProperty(body.propertyId)
 
   const property: Property = {
     propertyId: body.propertyId,

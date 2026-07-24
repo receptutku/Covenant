@@ -63,28 +63,45 @@ export function getDemoAccount(name: 'BUYER1' | 'BUYER2' | 'NOKYC'): HederaAccou
 }
 
 const CLIENT_KEY = Symbol.for('pprev.hedera.client.v1')
-type GlobalWithClient = typeof globalThis & { [CLIENT_KEY]?: Client }
+
+/**
+ * Identity of THIS evaluation of the module. A fresh Symbol per (re-)evaluation, so a
+ * hot-reloaded copy of the module never accepts a client built by an older copy.
+ */
+const MODULE_STAMP = Symbol('pprev.hedera.module')
+
+type CachedClient = { client: Client; stamp: symbol }
+type GlobalWithClient = typeof globalThis & { [CLIENT_KEY]?: CachedClient }
 
 /**
  * Shared client. It lives on `globalThis` because Next.js re-evaluates the module on hot
  * reload; opening a fresh Client every time would leak gRPC connections.
+ *
+ * The stamp check is not paranoia — it fixed a real failure. After a long dev session
+ * with many hot reloads, a cached client built from an OLD copy of the SDK module was
+ * being fed objects from the NEW copy, and TokenCreateTransaction died inside the SDK
+ * with `t.startsWith is not a function`. If the module has been re-evaluated since the
+ * client was cached, we close the stale client and build a fresh one.
  */
 export function getClient(): Client {
   const g = globalThis as GlobalWithClient
-  if (!g[CLIENT_KEY]) {
-    const operator = getOperator()
-    const client = Client.forName(getNetwork())
-    client.setOperator(operator.accountId, operator.privateKey)
-    // Don't let a request hang forever when the network is flaky.
-    client.setRequestTimeout(30_000)
-    g[CLIENT_KEY] = client
-  }
-  return g[CLIENT_KEY]
+  const cached = g[CLIENT_KEY]
+  if (cached && cached.stamp === MODULE_STAMP) return cached.client
+
+  cached?.client.close()
+
+  const operator = getOperator()
+  const client = Client.forName(getNetwork())
+  client.setOperator(operator.accountId, operator.privateKey)
+  // Don't let a request hang forever when the network is flaky.
+  client.setRequestTimeout(30_000)
+  g[CLIENT_KEY] = { client, stamp: MODULE_STAMP }
+  return client
 }
 
 export function closeClient(): void {
   const g = globalThis as GlobalWithClient
-  g[CLIENT_KEY]?.close()
+  g[CLIENT_KEY]?.client.close()
   delete g[CLIENT_KEY]
 }
 

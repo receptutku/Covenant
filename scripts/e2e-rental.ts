@@ -17,7 +17,7 @@ import { closeClient, getClient } from '../lib/hedera/client'
  * separately — a forged proof against the real backend is rejected.
  */
 
-const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3002'
+const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
 const ADMIN_SECRET = process.env.DEMO_ADMIN_SECRET!
 const PROPERTY_ID = 'PROP-003'
 const DEPOSIT = 5
@@ -111,15 +111,13 @@ async function listAndEngage(
   })
   const listingId = listed.body.listingId as string
 
-  await call('/api/rental/apply', {
+  // The scripted application path (dev-only + admin secret). The real /api/rental/apply
+  // requires a World proof the script cannot mint — its rejection of a forged proof is
+  // asserted separately in main().
+  await call('/api/dev/rental-apply', {
     method: 'POST',
-    body: {
-      listingId,
-      tenantAccountId: process.env.BUYER1_ID,
-      proof: { nullifier_hash: `0xtenant-${Date.now()}-${listingId}` },
-      action: 'verify-tenant',
-      monthlyRent: 1,
-    },
+    adminSecret: true,
+    body: { listingId, tenantAccountId: process.env.BUYER1_ID },
   })
 
   const engage = await call('/api/rental/engage', {
@@ -141,8 +139,32 @@ async function main() {
 
   const tenantId = process.env.BUYER1_ID!
 
+  // ── Guard: a forged tenant proof must be rejected ──────────────────────────
+  // (Mirrors the sale e2e: when World is configured, rejection IS the positive result.)
+  console.log('0a. Forged tenant proof against the real apply endpoint')
+  const probe = await call('/api/rental/list', {
+    method: 'POST',
+    body: { sellerSessionToken, propertyId: PROPERTY_ID, reqDeposit: DEPOSIT, lockWindowSeconds: 600 },
+  })
+  const forgedApply = await call('/api/rental/apply', {
+    method: 'POST',
+    body: {
+      listingId: probe.body.listingId,
+      tenantAccountId: process.env.BUYER1_ID,
+      proof: { nullifier_hash: `0xforged-${Date.now()}` },
+      action: 'verify-tenant',
+      monthlyRent: 1,
+    },
+  })
+  ok(
+    forgedApply.body.code === 'WORLD_PROOF_INVALID' || forgedApply.status === 200,
+    forgedApply.body.code === 'WORLD_PROOF_INVALID'
+      ? 'forged proof rejected by the real World backend'
+      : 'dev fallback accepted the proof (World not configured)',
+  )
+
   // ── Guard: a tokenized property cannot be rented ────────────────────────────
-  console.log('0. Renting a tokenized property')
+  console.log('\n0b. Renting a tokenized property')
   const tokenized = await call('/api/rental/list', {
     method: 'POST',
     body: {

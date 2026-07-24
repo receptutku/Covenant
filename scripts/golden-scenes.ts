@@ -126,6 +126,10 @@ async function main() {
 
     // Persist the seed token — /api/seed will set up PROP-001 with it.
     persistSeedTokenId(token.tokenId)
+    console.log(
+      '\n⚠ SEED_TOKEN_ID changed. The prop-001 ENS record still points at the previous',
+      '\n  token — run `npm run ens:write` so the discovery layer matches the chain.',
+    )
   })
 
   console.log('━'.repeat(70))

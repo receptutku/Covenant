@@ -72,14 +72,19 @@ export async function readAuditTrail(
   propertyId?: string,
   limit = 100,
 ): Promise<AuditEvent[]> {
+  // NEWEST first, then reversed into chronological order below. With `order=asc` the
+  // limit would cap the OLDEST hundred messages — after enough rehearsals the topic
+  // outgrows that window and the timeline silently stops showing anything new, which on
+  // stage reads as "the demo broke". Descending keeps the fresh events; only ancient
+  // history falls off the back.
   const data = await mirrorGet<{ messages?: MirrorTopicMessage[] }>(
-    `/topics/${topicId}/messages?limit=${limit}&order=asc`,
+    `/topics/${topicId}/messages?limit=${limit}&order=desc`,
   )
   if (!data?.messages) return []
 
   const events: AuditEvent[] = []
 
-  for (const message of data.messages) {
+  for (const message of [...data.messages].reverse()) {
     let envelope: HcsEnvelope
     try {
       envelope = JSON.parse(Buffer.from(message.message, 'base64').toString('utf8'))

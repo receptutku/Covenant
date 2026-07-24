@@ -64,7 +64,11 @@ export function handler(
     try {
       return await fn(request)
     } catch (error) {
-      if (error instanceof ApiError) {
+      // Duck-typed rather than `instanceof ApiError`: under hot reload a route module can
+      // hold a DIFFERENT copy of the ApiError class than this file, and instanceof across
+      // module copies is false — turning a well-formed 422 into a bare 500. Shape is the
+      // contract here, not class identity.
+      if (isApiErrorLike(error)) {
         return errorResponse(error.code, error.message, error.extra, error.status)
       }
       // The raw error goes to the server console only; no details reach the client.
@@ -72,6 +76,15 @@ export function handler(
       return errorResponse('INTERNAL_ERROR', 'An unexpected server error occurred.')
     }
   }
+}
+
+function isApiErrorLike(error: unknown): error is ApiError {
+  return (
+    error instanceof Error &&
+    typeof (error as ApiError).code === 'string' &&
+    typeof (error as ApiError).status === 'number' &&
+    typeof (error as ApiError).extra === 'object'
+  )
 }
 
 /** Shared secret guarding the verifier panel. Recep enters it by hand during the demo. */

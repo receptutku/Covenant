@@ -62,16 +62,32 @@ async function main() {
   // Start from a clean store so repeated runs are deterministic.
   await call('/api/reset', { method: 'POST' })
 
-  // ── 1. Seller onboarding (World Selfie gate) ───────────────────────────────
-  console.log('1. POST /api/onboard')
-  const onboard = await call('/api/onboard', {
+  // ── 1. Seller session ──────────────────────────────────────────────────────
+  //
+  // Two branches, both asserting the RIGHT thing for the server's configuration:
+  //  - With World configured, a forged proof MUST be rejected — that rejection is the
+  //    positive result here (this exact case regressed once: the test used to expect a
+  //    forged proof to pass, which was only true before credentials existed).
+  //  - The session for the rest of the flow comes from the dev endpoint, which is the
+  //    sanctioned scripted path (dev-only + admin secret; the real IDKit widget cannot
+  //    be driven from a script).
+  console.log('1. Seller session')
+  const forged = await call('/api/onboard', {
     method: 'POST',
     body: { proof: { nullifier_hash: `0xtest-${Date.now()}` }, action: 'onboard-seller' },
   })
-  ok(onboard.status === 200, `status 200 (got ${onboard.status})`)
-  const sellerSessionToken = onboard.body.sellerSessionToken as string
+  const worldConfigured = forged.body.code === 'WORLD_PROOF_INVALID'
+  ok(
+    worldConfigured || forged.status === 200,
+    worldConfigured
+      ? 'forged proof rejected by the real World backend'
+      : 'dev fallback accepted the proof (World not configured)',
+  )
+
+  const session = await call('/api/dev/session', { method: 'POST', adminSecret: true })
+  const sellerSessionToken = session.body.sellerSessionToken as string
   ok(typeof sellerSessionToken === 'string' && sellerSessionToken.length === 64, 'opaque 64-hex session token')
-  ok(!JSON.stringify(onboard.body).includes('nullifier'), 'response leaks no nullifier')
+  ok(!JSON.stringify(session.body).includes('nullifier'), 'response leaks no nullifier')
 
   // ── 2. Attest without a session must fail ──────────────────────────────────
   console.log('\n2. POST /api/attest without a session')

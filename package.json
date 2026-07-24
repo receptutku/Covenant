@@ -17,7 +17,8 @@
     "dev:noworld": "WORLD_RP_ID= WORLD_SIGNING_KEY= next dev -p 3002",
     "ens:check": "tsx scripts/ens-check.ts",
     "ens:register": "tsx scripts/ens-register.ts",
-    "ens:write": "tsx scripts/ens-write.ts"
+    "ens:write": "tsx scripts/ens-write.ts",
+    "preflight": "tsx scripts/preflight.ts"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",

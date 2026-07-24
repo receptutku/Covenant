@@ -82,8 +82,14 @@ npm run accounts:create        # generates buyer1 / buyer2 / nokyc into .env.loc
 npm run bootstrap              # opens the HCS audit topic
 npm run golden                 # mints the seed token + verifies the three golden moments
 npm run ens:write              # publishes per-property config to ENS (Sepolia)
+npm run preflight              # one-shot stage-readiness check (read-only, free)
 npm run dev                    # http://localhost:3000
 ```
+
+Before any rehearsal or the demo itself: `npm run preflight` must end with
+**"All green. Go."** — it verifies every scene precondition from public data (including
+the deliberately-unKYC'd account and ENS↔chain consistency). Crisis procedures live in
+[`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 Then `POST /api/seed` (or use the UI's seed control) before any rehearsal — it restores
 PROP-001, tops buyer1 back up for the secondary-fee scene, and re-associates nokyc
