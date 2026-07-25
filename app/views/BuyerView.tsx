@@ -219,7 +219,11 @@ export function BuyerView() {
         </p>
       </ActionCard>
 
-      <ActionCard title="0. Pick a property" description="Golden scenes run on PROP-001; type any live property id.">
+      <ActionCard
+        title="0. Pick a property"
+        description="Golden scenes run on PROP-001; type any live property id."
+        techNote="Nothing below renders until this resolves — the client refuses to act on configuration it has not read from a neutral source."
+      >
         <div className="flex flex-wrap items-center gap-2">
           {/*
             Free text rather than a fixed list: the set of live properties changes

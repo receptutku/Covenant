@@ -5,6 +5,7 @@ import { SellerView } from "@/app/views/SellerView";
 import { VerifierView } from "@/app/views/VerifierView";
 import { BuyerView } from "@/app/views/BuyerView";
 import { AuditTimeline } from "@/app/views/AuditTimeline";
+import { CapTable } from "@/app/views/CapTable";
 import type { Attestation } from "@/lib/api-types";
 
 const TABS = [
@@ -87,8 +88,13 @@ export default function Home() {
         a public source rather than from anything the three columns own.
       */}
       <section className="p-4 pt-0 sm:p-6 sm:pt-0">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <AuditTimeline />
+        <div className="flex flex-col gap-4">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+            <AuditTimeline />
+          </div>
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+            <CapTable />
+          </div>
         </div>
       </section>
     </div>
