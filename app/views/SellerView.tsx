@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api, ApiRequestError } from "@/lib/apiClient";
 import { devIssueSellerSession } from "@/lib/realApi";
 import type { Attestation } from "@/lib/api-types";
+import { WorldVerifyButton } from "@/app/components/WorldVerifyButton";
 import { StepIndicator } from "@/app/components/common/StepIndicator";
 import { ActionCard } from "@/app/components/common/ActionCard";
 import { StatusBadge } from "@/app/components/common/StatusBadge";
@@ -50,15 +51,11 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
 
   const step = !session ? 0 : !documentRoot ? 1 : propertyState !== "TOKENIZED" ? 2 : 4;
 
-  async function handleSelfie() {
+  async function handleProof(proof: Record<string, unknown>) {
     setBusy("selfie");
     setError(null);
     try {
-      // The real World IDKit widget gets wired in here in Phase A7. Mock proof for now.
-      const res = await api.onboardSeller({
-        proof: { success: true, nullifier_hash: `mock-seller-${crypto.randomUUID()}` },
-        action: "onboard-seller",
-      });
+      const res = await api.onboardSeller({ proof, action: "onboard-seller" });
       setSession({ token: res.sellerSessionToken, expiresAt: res.expiresAt });
     } catch (e) {
       setError(e as ApiRequestError);
@@ -170,13 +167,13 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
       <ActionCard title="1. Selfie Check (World ID)" description="No liveness proof, no document upload — the seller gate.">
         {!session ? (
           <div className="flex flex-col gap-2">
-            <button
-              onClick={handleSelfie}
+            <WorldVerifyButton
+              action="onboard-seller"
+              signal={propertyId}
+              label={busy === "selfie" ? "Verifying..." : "Verify with Selfie (World ID)"}
               disabled={busy === "selfie"}
-              className="w-fit rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
-            >
-              {busy === "selfie" ? "Verifying..." : "Verify with Selfie (World ID)"}
-            </button>
+              onProof={handleProof}
+            />
 
             <button
               type="button"

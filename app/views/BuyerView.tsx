@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, ApiRequestError } from "@/lib/apiClient";
 import { devClearReplay, devGrantKyc } from "@/lib/realApi";
 import type { ReadEnsResult, BuyResult, VerifyBuyerResult, SeedResult } from "@/lib/api-types";
+import { WorldVerifyButton } from "@/app/components/WorldVerifyButton";
 import { ActionCard } from "@/app/components/common/ActionCard";
 import { StatusBadge } from "@/app/components/common/StatusBadge";
 import { ErrorCard } from "@/app/components/common/ErrorCard";
@@ -94,17 +95,14 @@ export function BuyerView() {
     }
   }
 
-  async function doIdentityKyc() {
+  async function handleBuyerProof(proof: Record<string, unknown>) {
     setBusy("kyc");
     setError(null);
     try {
-      // World ID 4.0: fetch the signed RP context first, then hand it to IDKit
-      // (wired for real in Phase A7 — the mock just discards the return value).
-      await api.getRpSignature({ action: "verify-buyer", signal: `${propertyId}:${buyerAccountId}` });
       const res = await api.verifyBuyerAndGrantKyc({
         propertyId,
         buyerAccountId,
-        proof: { success: true, nullifier_hash: `mock-buyer-${buyerKey}-${crypto.randomUUID()}` },
+        proof,
         action: "verify-buyer",
       });
       setKyc(res);
@@ -294,13 +292,13 @@ export function BuyerView() {
       >
         {buyerKey !== "nokyc" && (
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={doIdentityKyc}
-              disabled={!ens || busy === "kyc"}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
-            >
-              {busy === "kyc" ? "Verifying..." : "Grant KYC via Identity Check"}
-            </button>
+            <WorldVerifyButton
+              action="verify-buyer"
+              signal={`${propertyId}:${buyerAccountId}`}
+              label={busy === "kyc" ? "Verifying..." : "Grant KYC via Identity Check"}
+              disabled={!ens || !buyerAccountId || busy === "kyc"}
+              onProof={handleBuyerProof}
+            />
             <button
               onClick={doDevKyc}
               disabled={!ens || !adminSecret || !buyerAccountId || busy === "kyc"}
