@@ -1,4 +1,4 @@
-CONTRACT-VERSION: 3
+CONTRACT-VERSION: 4
 
 # PPREV API Contract
 
@@ -26,6 +26,9 @@ CONTRACT-VERSION: 3
   These are meant for display, not for driving logic.
 - No response **ever** contains: a raw World nullifier, a World proof, selfie/identity data,
   document bytes, a document salt, any private key, or a raw Hedera SDK object.
+- **Every `POST` endpoint** can return `INVALID_INPUT` (400): the body is parsed by Zod and a
+  malformed one never reaches the handler. The message names the offending field paths
+  (`files.0.type`) but never their values. The per-endpoint error lists below do not repeat it.
 
 ### HTTP status code mapping
 
@@ -159,6 +162,50 @@ LISTED → APPLIED → ENGAGED → SETTLED
 
 # Endpoints
 
+## `GET /api/health` — Liveness and public identifiers
+
+No body, no auth, no chain calls — cheap enough to poll every few seconds.
+
+**Response 200**
+
+```json
+{
+  "ok": true,
+  "time": "2026-07-24T10:15:00.000Z",
+  "world": "configured",
+  "ens": "pprevlisbon.eth",
+  "auditTopicId": "0.0.111",
+  "seededProperties": 2,
+  "demoAccounts": {
+    "buyer1": "0.0.654321",
+    "buyer2": "0.0.654322",
+    "nokyc": "0.0.654323",
+    "operator": "0.0.1001"
+  }
+}
+```
+
+`world` is `"configured"` or `"dev-fallback"`. `ens`, `auditTopicId` and every entry of
+`demoAccounts` is `null` when the corresponding environment variable is unset.
+
+> **Read the demo account ids from here — do not hard-code them.** This is not a style
+> preference: the frontend once carried invented account ids left over from the mock, and
+> every transfer against them failed with `TOKEN_NOT_ASSOCIATED`, which looked like a backend
+> bug when the accounts simply did not exist. The ids differ per environment and per
+> `.env`; fetching them removes that whole class of drift.
+>
+> These are account ids only — public by nature, readable on HashScan by anyone. No key,
+> secret or session material is exposed here.
+>
+> Role mapping: `buyer1` is the KYC-verified buyer and the tenant in the rental flow,
+> `buyer2` is the secondary-market counterparty, `nokyc` is associated with every property
+> token but deliberately never granted KYC (**never send it to `/api/kyc`** — see that
+> endpoint), and `operator` is the treasury, seller, landlord and escrow holder.
+
+**Errors:** none — this endpoint does not fail while the process is alive.
+
+---
+
 ## `POST /api/onboard` — Seller/Landlord selfie gate
 
 Verifies the World **Selfie Check** proof server-side and issues an opaque seller session.
@@ -225,10 +272,23 @@ types: `application/pdf`, `image/png`, `image/jpeg`.
 
 > `documentRoot` is a salted, domain-separated Merkle root. The salt and the document bytes
 > stay private on the server; they appear neither in the response nor on HCS.
+>
+> `hcs` is `null` when the topic write failed. The submission itself still succeeded — the
+> HCS write is fire-and-forget so that a Hedera hiccup cannot lose an accepted property. Treat
+> a null as "not yet on the timeline", not as an error.
+
+Beyond the declared limits, `UNSUPPORTED_FILE_TYPE` also fires when a file's actual magic
+bytes disagree with its declared `type` (a `.exe` labelled `application/pdf`), or when
+`dataBase64` decodes to nothing.
 
 **Errors:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
 `TOO_MANY_FILES` (400), `FILE_TOO_LARGE` (400), `UNSUPPORTED_FILE_TYPE` (400),
-`INVALID_INPUT` (400)
+`ALREADY_TOKENIZED` (409 — also returns the existing `tokenId`), `INVALID_INPUT` (400)
+
+> `ALREADY_TOKENIZED` here means a resubmission against a property that already has a token
+> on-chain. It is refused rather than allowed to reset the property to `PENDING_REVIEW`,
+> because the token would keep existing while the store claimed the property was unreviewed —
+> and the seeded `PROP-001` is exactly such a property.
 
 **HCS:** `PROPERTY_SUBMITTED` — payload: `{ documentRoot, documentCount, city }`
 
@@ -311,7 +371,14 @@ expiresAt=<ISO8601>
 { "propertyId": "PROP-002", "state": "REJECTED", "reason": "Document is not legible" }
 ```
 
-**Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400)
+**Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404), `OWNERSHIP_PENDING` (422),
+`INVALID_INPUT` (400)
+
+> `OWNERSHIP_PENDING` here reads backwards until you know why: it is thrown when the property
+> is **not** in `PENDING_REVIEW`, i.e. it has already been decided. Re-deciding an approved
+> property would mint a second attestation with a fresh expiry, quietly extending the
+> freshness window past what the reviewer actually signed off on. The message names the
+> current state.
 
 **HCS:** `OWNERSHIP_APPROVED` / `OWNERSHIP_REJECTED`
 
@@ -344,7 +411,21 @@ Gate order: state is `APPROVED` → verify signature → `propertyId`/`sellerAcc
 
 **Errors:** `PROPERTY_NOT_FOUND` (404), `OWNERSHIP_PENDING` (422),
 `OWNERSHIP_REJECTED` (422), `ATTESTATION_INVALID` (422), `ATTESTATION_EXPIRED` (422),
-`ALREADY_TOKENIZED` (409 — also returns the existing `tokenId`)
+`ALREADY_TOKENIZED` (409 — also returns the existing `tokenId`), `INVALID_INPUT` (400)
+
+> **A tampered attestation returns `ATTESTATION_INVALID` (422), not `INVALID_INPUT`.** The
+> Zod schema for `attestation` is deliberately permissive about field CONTENT — every field
+> is just a bounded string — so that shape validation cannot preempt signature verification.
+> With a strict `documentRoot` pattern and a `decision` literal, a doctored attestation was
+> rejected by Zod before the signature was ever checked, and the tamper-test scene produced a
+> generic 400 that reads as "you sent a malformed request" instead of "a forgery was blocked".
+> Nothing is weakened by this: `assertAttestationValid` verifies the Ed25519 signature over
+> the canonical payload, cross-checks `propertyId`/`sellerAccountId`/`documentRoot` against
+> the stored property, requires `decision === "APPROVED"`, and enforces expiry. A field of the
+> wrong shape cannot survive that.
+>
+> What still yields `INVALID_INPUT` is a structurally broken body — a missing field, a
+> non-string, a `propertyId` outside `[A-Za-z0-9-]{3,40}`.
 
 **HCS:** `PROPERTY_TOKEN_CREATED`
 
@@ -362,6 +443,9 @@ Any `action` outside the whitelist is rejected.
 ```
 
 Allowed `action` values: `onboard-seller`, `verify-buyer`, `verify-tenant`.
+`signal` is optional (max 200 chars); it is echoed back verbatim, and comes back as `null`
+when it was omitted. The server does not fold it into `rpContext` — it is a passthrough
+convenience so the caller does not have to carry it alongside the response.
 
 **Response 200**
 
@@ -404,8 +488,8 @@ Allowed `action` values: `onboard-seller`, `verify-buyer`, `verify-tenant`.
 }
 ```
 
-Flow: verify proof → replay check against the HMAC digest of the nullifier → read the
-property's real `tokenId` → `associate` → `grantKyc`.
+Flow: property + token lookup → **nokyc guard** → verify proof → replay check against the
+HMAC digest of the nullifier → `associate` → `grantKyc`.
 
 **Response 200**
 
@@ -421,8 +505,32 @@ property's real `tokenId` → `associate` → `grantKyc`.
 }
 ```
 
+> `associationTxId` is `null` for any account whose key the server does not hold — i.e.
+> anything other than the `buyer1`/`buyer2`/`nokyc` demo accounts. Association must be signed
+> by the account being associated, so for a real wallet the holder associates the token
+> themselves first; the KYC grant is signed by the token's KYC key and needs nothing from the
+> buyer. A `null` here is not a failure: `kycGranted: true` is the outcome that matters.
+
 **Errors:** `WORLD_PROOF_INVALID` (422), `WORLD_PROOF_REPLAY` (422),
-`PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400)
+`PROPERTY_NOT_FOUND` (404 — unknown property, **or** a property with no token yet),
+`KYC_DENIED` (422), `TOKEN_NOT_ASSOCIATED` (422 — also returns `hederaStatus` and `tokenId`),
+`INVALID_INPUT` (400)
+
+> `KYC_DENIED` here means the requested `buyerAccountId` is the reserved `nokyc` account. It
+> is refused because granting it KYC would destroy the demo's counter-example permanently —
+> there is no revoke endpoint, and that account's whole purpose is to be the one that was
+> never verified.
+>
+> **This guard fires BEFORE the World proof is verified, deliberately.** A rejected attempt
+> therefore does not burn the user's nullifier: a nullifier is derived from (identity, app,
+> action), so consuming it on a request that was going to be refused anyway would lock that
+> person out of ever verifying as a buyer. The cost of the ordering is that a `nokyc` request
+> tells you nothing about whether the proof was valid — which is fine, because the answer is
+> "this account is not eligible" either way.
+>
+> `TOKEN_NOT_ASSOCIATED` means the grant reached Hedera and the network refused it because
+> the account has not associated the token. That is the one failure the account holder can
+> fix themselves.
 
 **HCS:** `BUYER_ELIGIBILITY_CONFIRMED`, then `KYC_GRANTED`
 
@@ -443,6 +551,9 @@ property's real `tokenId` → `associate` → `grantKyc`.
 
 `mode`: `"primary"` (operator → buyer) | `"secondary"` (buyer1 → buyer2) | `"nokyc"` (operator → nokyc, must be rejected).
 
+`amount` is optional and **defaults to 100**; it must be a positive integer ≤ 1000 (the whole
+supply of a property token), otherwise `INVALID_INPUT`.
+
 **Response 200**
 
 ```json
@@ -450,6 +561,7 @@ property's real `tokenId` → `associate` → `grantKyc`.
   "transferred": true,
   "tokenId": "0.0.222333",
   "amount": 100,
+  "netAmount": 98,
   "from": "0.0.1001",
   "to": "0.0.654321",
   "mode": "primary",
@@ -461,8 +573,19 @@ property's real `tokenId` → `associate` → `grantKyc`.
 }
 ```
 
-On a primary transfer `assessedCustomFees` is empty (treasury exemption). On a secondary
-transfer it is `amount: 2`.
+On a primary transfer `assessedCustomFees` is empty (treasury exemption) and
+`netAmount === amount`. On a secondary transfer the fee is `amount: 2` and `netAmount` is 98.
+
+> **`netAmount` is the number to put in front of the user, not `amount`.** The 2% fractional
+> fee is **INCLUSIVE**: on a secondary transfer of 100 the sender is debited 100, the
+> collector takes 2, and the recipient is credited **98**. `netAmount` is
+> `amount − Σ assessedCustomFees`.
+>
+> A UI that shows "100 shares transferred" next to the recipient's balance is making a claim
+> Mirror Node's own token-transfer list for that same transaction contradicts — which is
+> exactly the discrepancy an auditor is supposed to catch, in the audit product. Show
+> `amount` as sent and `netAmount` as received; the gap is the fee, and saying so out loud is
+> the point of the scene.
 
 `buyerAccountId` is required for `primary` only. In `secondary` and `nokyc` the parties are
 fixed demo accounts, because those are scripted scenes: the fee scene needs a holder who is
@@ -486,10 +609,17 @@ deliberately un-KYC'd.
 > `code` is stable (UI logic depends on it). `hederaStatus` is for display — it is shown
 > prominently on screen and carries the "Hedera rejected this at the network level" narrative.
 
-**Errors:** `PROPERTY_NOT_FOUND` (404), `KYC_DENIED` (422),
-`TOKEN_NOT_ASSOCIATED` (422), `INVALID_INPUT` (400)
+**Errors:** `PROPERTY_NOT_FOUND` (404 — unknown property, **or** a property with no token
+yet), `KYC_DENIED` (422), `TOKEN_NOT_ASSOCIATED` (422), `INVALID_INPUT` (400)
 
-**HCS:** `TOKEN_TRANSFERRED` (only on a successful transfer)
+> `INVALID_INPUT` covers three cases here, all 400: a malformed body, `mode: "primary"` sent
+> without a `buyerAccountId`, and — with `hederaStatus: "INSUFFICIENT_TOKEN_BALANCE"` — a
+> transfer larger than the sender actually holds. The last one is mapped explicitly so a
+> repeated rehearsal surfaces "the sender does not hold that many shares" instead of a bare
+> 500 that looks like a crash. Run `POST /api/seed` to top buyer1 back up.
+
+**HCS:** `TOKEN_TRANSFERRED` — payload carries both `amount` and `netAmount`, plus
+`assessedFeeTotal`. Only successful transfers are recorded.
 
 ---
 
@@ -543,9 +673,11 @@ The server normalizes the name `prop-002.<ENS_PARENT_NAME>` and resolves it on S
 
 If any record in the relevant set is missing → `ENS_CONFIG_INCOMPLETE` (422).
 
-**Fallback:** if ENS resolution errors or times out, the response comes back with
-`"source": "env-fallback"` and the server console logs `ENS config unavailable → env fallback`.
-Responses are cached in memory for 60 seconds.
+**Fallback:** if ENS resolution errors, times out, or returns no records at all, the response
+comes back with `"source": "env-fallback"` and the server console logs
+`ENS config unavailable → env fallback`. A live (`"ens"`) response is cached in memory for 60
+seconds; a fallback response for only **8** seconds, so the UI stops showing a degraded source
+shortly after Sepolia recovers rather than a full minute later.
 
 **Errors:** `ENS_CONFIG_INCOMPLETE` (422), `INVALID_INPUT` (400)
 
@@ -555,6 +687,9 @@ Responses are cached in memory for 60 seconds.
 
 Reads the HCS messages from Mirror Node, base64-decodes them, and returns them chronologically.
 
+**`propertyId` is optional.** Omit it and the full protocol trail comes back — sale and rental
+events interleaved on one record, which is what the "one core, two modes" story needs.
+
 **Response 200**
 
 ```json
@@ -562,38 +697,96 @@ Reads the HCS messages from Mirror Node, base64-decodes them, and returns them c
   "propertyId": "PROP-002",
   "topicId": "0.0.111",
   "source": "mirror-node",
+  "eventCount": 1,
   "events": [
     {
       "eventType": "PROPERTY_SUBMITTED",
       "timestamp": "2026-07-24T10:15:00.000Z",
+      "consensusTimestamp": "1784927773.123456789",
       "sequenceNumber": 7,
+      "propertyId": "PROP-002",
       "payload": { "documentRoot": "9f2c...", "documentCount": 2 },
       "explorerUrl": "https://hashscan.io/testnet/topic/0.0.111"
     }
   ],
+  "token": {
+    "tokenId": "0.0.222333",
+    "name": "PPREV Alfama 2+1",
+    "symbol": "ALFM",
+    "totalSupply": "1000",
+    "decimals": "0",
+    "treasuryAccountId": "0.0.1001",
+    "customFees": {},
+    "explorerUrl": "https://hashscan.io/testnet/token/0.0.222333"
+  },
   "links": {
     "topic": "https://hashscan.io/testnet/topic/0.0.111",
-    "token": "https://hashscan.io/testnet/token/0.0.222333"
+    "token": "https://hashscan.io/testnet/token/0.0.222333",
+    "mirrorTopic": "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.111/messages"
   }
 }
 ```
 
+Nullable fields, all of them normal states rather than errors:
+
+| Field | `null` when |
+|---|---|
+| `propertyId` (top level) | the query parameter was omitted |
+| `token` | the property has no token, no `propertyId` was given, or Mirror has no record of it |
+| `links.token` | the property has no token, or no `propertyId` was given |
+
+Each event carries two timestamps: `timestamp` is what the writer put in the envelope,
+`consensusTimestamp` is Hedera's own `seconds.nanos` ordering — the one to sort by and the one
+an auditor can look up. `propertyId` on the event lets an unfiltered timeline be grouped
+client-side. `links.mirrorTopic` is the raw public endpoint; the whole point is that anyone can
+curl it and reach the same list without going through this server.
+
 Mirror Node lag is expected; if an event has not surfaced yet the list simply comes back
-shorter (this is not an error).
+shorter (this is not an error). Messages not paid for by the operator account are filtered out
+— the topic has no submit key, so anyone can post a well-formed forgery to it.
+
+**Errors:** `INTERNAL_ERROR` (500 — the audit topic is not configured on the server)
 
 ---
 
 ## `POST /api/seed` — Demo state setup (development only)
 
-Writes `PROP-001` into the store in the `TOKENIZED` state with a valid `tokenId`, grants KYC
-to `buyer1`, and **associates the `nokyc` account with the token but does not grant it KYC**
-(essential for the golden moment).
+Writes **two** properties into the store:
+
+- `PROP-001` — `TOKENIZED` with the real `SEED_TOKEN_ID`, for the pre-baked sale scenes.
+- `PROP-003` — `APPROVED` and deliberately never tokenized, the property the rental flow
+  lists. Without it the rental scene died with `PROPERTY_NOT_FOUND` after every restart,
+  because it silently depended on someone having run attest + approve by hand first.
+
+It also associates `buyer1`, `buyer2` and `nokyc` with the seed token, grants KYC to `buyer1`
+and `buyer2`, and **leaves `nokyc` associated but not KYC'd** (essential for the golden
+moment). Every step is idempotent, so re-seeding between rehearsals is safe.
 
 **Response 200**
 
 ```json
-{ "seeded": true, "properties": ["PROP-001"], "tokenId": "0.0.222111", "elapsedMs": 2400 }
+{
+  "seeded": true,
+  "properties": ["PROP-001", "PROP-003"],
+  "tokenId": "0.0.222111",
+  "replenished": { "needed": 100, "fromBuyer2": 105, "fromTreasury": 0 },
+  "preparedTokens": ["PROP-002"],
+  "elapsedMs": 2400
+}
 ```
+
+`replenished` reports how buyer1's shares were restored for the secondary-market scene:
+`needed` is the shortfall against the 100 shares that scene consumes, `fromBuyer2` is what was
+swept back from buyer2 (the transfer itself pays the 2% fee, so slightly more is moved than is
+needed), and `fromTreasury` is the remainder. All three are `0` when buyer1 already holds
+enough. `preparedTokens` lists the propertyIds of any OTHER tokenized properties whose token
+relationships were repaired — a token minted during a live run starts with no associations at
+all, which is how the no-KYC scene once failed with `TOKEN_NOT_ASSOCIATED` on the live
+property while working on the seeded one. A property whose repair failed is logged and skipped,
+not listed.
+
+**Errors:** `INTERNAL_ERROR` (500 — `SEED_TOKEN_ID` is not configured; run `npm run golden`
+once to mint the seed token)
 
 ## `POST /api/reset` — Clears the store (development only)
 
@@ -601,7 +794,93 @@ to `buyer1`, and **associates the `nokyc` account with the token but does not gr
 { "reset": true }
 ```
 
-Both endpoints return `404` in production.
+Wipes all in-memory state: properties, rentals, sessions and used-proof digests. On-chain
+artefacts are permanent and untouched. To clear *only* the proof digests, use
+`/api/dev/clear-replay` below — a full reset costs a reseed.
+
+Both endpoints return `404` with `code: "PROPERTY_NOT_FOUND"` in production.
+
+---
+
+# Development-only endpoints (`/api/dev/*`)
+
+**Not part of the demo narrative, and not part of the versioned client interface.** These
+exist for scripted tests and for recovering a blocked rehearsal. All three require
+`NODE_ENV !== "production"` **and** the `x-demo-admin-secret` header — two independent guards
+— and every one of them logs a `[dev]` warning on the server when it runs. In production they
+return `404` / `PROPERTY_NOT_FOUND`; with a wrong or missing secret, `401` / `UNAUTHORIZED`.
+
+> Why they are separate routes rather than flags on the real handlers: a bypass branch inside
+> `/api/onboard` would mean the production authentication path contains a code path that skips
+> authentication. Guarded or not, that is the kind of branch that survives a refactor and
+> ships. Keeping them in their own files means the real handlers have no bypass at all.
+
+## `POST /api/dev/session` — Seller session without a World proof
+
+**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>` · **Request:** empty body
+
+```json
+{
+  "onboarded": true,
+  "sellerSessionToken": "a1b2c3...",
+  "expiresAt": "2026-07-24T10:45:00.000Z",
+  "warning": "Development session — no World verification was performed."
+}
+```
+
+Same shape as `/api/onboard` plus a `warning`. Use it for end-to-end tests, which cannot drive
+the IDKit widget, and as the fallback if the World simulator is unavailable during the demo —
+in which case say so out loud rather than letting the audience believe a verification happened.
+
+## `POST /api/dev/rental-apply` — Rental application without a World proof
+
+**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
+
+```json
+{ "listingId": "RENT-001", "tenantAccountId": "0.0.654321" }
+```
+
+**Response 200**
+
+```json
+{
+  "listingId": "RENT-001",
+  "state": "APPLIED",
+  "tenantAccountId": "0.0.654321",
+  "warning": "Development application — no World verification was performed."
+}
+```
+
+The `RENTAL_APPLICATION` audit event is still written, with `verifiedByWorld: false` — the
+honest record of what happened.
+
+**Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404 — unknown `listingId`),
+`RENTAL_NOT_ENGAGED` (422 — the listing is not `LISTED`), `INVALID_INPUT` (400)
+
+## `POST /api/dev/clear-replay` — Forget used World proofs
+
+**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>` · **Request:** empty body
+
+```json
+{
+  "cleared": 3,
+  "warning": "Previously used World proofs will be accepted again. Development only."
+}
+```
+
+> **Why this exists.** It is not a bug workaround — it is replay protection working correctly
+> and being inconvenient because of it. A World nullifier is derived from
+> (identity, app, action), so it is the SAME value every time a given person repeats a given
+> check. The first Selfie Check of a rehearsal succeeds; the **second is refused as
+> `WORLD_PROOF_REPLAY` at step one**, before anything else can be shown. On a shared demo
+> identity that is the difference between rehearsing twice and rehearsing once.
+>
+> It clears **only** the proof digests. Seeded properties, listings and sessions are left
+> intact, which is what separates it from `/api/reset`.
+>
+> It does **not** weaken verification: every proof is still verified against World on every
+> attempt, and each one can still only be used once after this call. It forgets history,
+> nothing else.
 
 ---
 
@@ -782,6 +1061,86 @@ but a refund plus a landlord penalty.
 
 ---
 
+# Development-only endpoints
+
+These exist so the flow can be driven without the World simulator, and so a blocked
+rehearsal can be recovered. **They are not part of the demo narrative** — nothing shown to
+judges should depend on them.
+
+Two independent guards on all three: the process must not be in production
+(`NODE_ENV !== 'production'`), and the caller must send `x-demo-admin-secret`. In a
+production build they answer `404`, like `/api/seed` and `/api/reset`.
+
+Each one is a separate route rather than a flag on the real endpoint. A bypass branch
+living inside an authentication handler is the kind of thing that survives a refactor and
+ships; keeping them apart means `/api/onboard` and `/api/rental/apply` contain no bypass at
+all.
+
+## `POST /api/dev/session` — Seller session without a World proof
+
+**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
+
+**Response 200** — same shape as `/api/onboard`, plus a `warning` field:
+
+```json
+{
+  "onboarded": true,
+  "sellerSessionToken": "a1b2c3...",
+  "expiresAt": "2026-07-24T10:45:00.000Z",
+  "warning": "Development session — no World verification was performed."
+}
+```
+
+Use it when the simulator is unavailable. If it is used during a live demo, say so out
+loud — the server logs a warning, and claiming a verification happened when it did not is
+the one thing this project cannot afford.
+
+**Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404 — in production)
+
+## `POST /api/dev/rental-apply` — Tenant application without a World proof
+
+**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
+
+**Request**
+
+```json
+{ "listingId": "RENT-001", "tenantAccountId": "0.0.654321" }
+```
+
+**Response 200** — as `/api/rental/apply`, plus `warning`.
+
+The `RENTAL_APPLICATION` audit event is still emitted, with `verifiedByWorld: false` — the
+honest record of what actually happened.
+
+**Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404), `RENTAL_NOT_ENGAGED` (422)
+
+## `POST /api/dev/clear-replay` — Forget used World proofs
+
+**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
+
+**Response 200**
+
+```json
+{ "cleared": 3, "warning": "Previously used World proofs will be accepted again. Development only." }
+```
+
+> **Run this between rehearsals that reuse the same World identity.** A nullifier is derived
+> from (identity, app, action), so the same person repeating the same check presents the
+> *same* nullifier every time. That is replay protection working correctly — and it means
+> rehearsal #2 is refused with `WORLD_PROOF_REPLAY` at step one, before anything else can
+> be shown.
+>
+> This clears only the proof history. Seeded properties, sessions and on-chain state are
+> untouched, so no reseed is needed. `/api/reset` also clears it, but takes the demo state
+> with it.
+>
+> Verification is not weakened: proofs are still checked against World on every attempt,
+> and each remains single-use after the call.
+
+**Errors:** `UNAUTHORIZED` (401)
+
+---
+
 # Frontend method name ↔ path mapping
 
 `lib/mockApi.ts` and `lib/realApi.ts` implement the same interface:
@@ -805,3 +1164,12 @@ but a refund plus a landlord penalty.
 | `rentalEngage` | `POST /api/rental/engage` |
 | `rentalSettle` | `POST /api/rental/settle` |
 | `rentalExpire` | `POST /api/rental/expire` |
+| `health` | `GET /api/health` |
+
+Development-only, not part of the interface the demo depends on:
+
+| Method | Path |
+|---|---|
+| `devSession` | `POST /api/dev/session` |
+| `devRentalApply` | `POST /api/dev/rental-apply` |
+| `devClearReplay` | `POST /api/dev/clear-replay` |
