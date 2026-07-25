@@ -59,6 +59,16 @@ export const POST = handler(async (request) => {
   //
   // Rounded to whole tinybars because 0.1 * 3 is 0.30000000000000004 in binary floating
   // point, and that is what would have been written to the chain.
+  // A listing created before `monthlyRent` moved onto the listing has none, and the store
+  // survives hot reload — so `undefined * 3` is NaN, which serialises as null in both the
+  // response and the on-chain payload. Refuse rather than publish a null threshold: the whole
+  // point of recording it is that the bar is auditable.
+  if (typeof rental.monthlyRent !== 'number' || !Number.isFinite(rental.monthlyRent)) {
+    throw new ApiError(
+      'RENTAL_NOT_APPROVED',
+      'This listing predates the advertised-rent field and cannot be applied to. Re-list it.',
+    )
+  }
   const requiredMonthlyEarnings = toTinybarPrecision(rental.monthlyRent * INCOME_MULTIPLE)
   const thresholdRule = `income >= ${INCOME_MULTIPLE}x rent`
   const incomeThresholdMet = true

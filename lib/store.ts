@@ -159,10 +159,20 @@ export function clearReplayDigests(): number {
 const DROPPED_KEY = Symbol.for('pprev.dropped.v1')
 type GlobalWithDropped = typeof globalThis & { [DROPPED_KEY]?: string[] }
 
+/**
+ * Capped, because this list is returned in full by /api/health — which is unauthenticated and
+ * documented as safe to poll every few seconds. If a payload key ever does trip the guard,
+ * every affected request appends an entry and the health response grows with the bug's age.
+ * The count is what matters; the reasons are for diagnosis, and the oldest few are enough.
+ */
+const MAX_DROPPED_RECORDED = 50
+
 export function recordDroppedEvent(reason: string): void {
   const g = globalThis as GlobalWithDropped
   if (!g[DROPPED_KEY]) g[DROPPED_KEY] = []
-  g[DROPPED_KEY].push(reason)
+  // Keep the FIRST ones, not the last: the earliest drop is the one that explains the cause,
+  // and later entries are usually the same bug repeating.
+  if (g[DROPPED_KEY].length < MAX_DROPPED_RECORDED) g[DROPPED_KEY].push(reason)
 }
 
 /** Guard-refused audit events since the process started. Read by /api/health. */

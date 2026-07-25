@@ -150,6 +150,7 @@ interface Store {
   usedNullifiers: Set<string>;
   sequence: number;
   rentalCounter: number;
+  adminSecret: string;
 }
 
 function freshStore(): Store {
@@ -160,6 +161,7 @@ function freshStore(): Store {
     usedNullifiers: new Set(),
     sequence: 0,
     rentalCounter: 0,
+    adminSecret: "",
   };
 }
 
@@ -216,6 +218,30 @@ function validSession(token: string | undefined): SessionRecord {
     throw new ApiRequestError("SELLER_SESSION_EXPIRED", "Session expired — verify with Selfie again.", 401);
   }
   return session;
+}
+
+/**
+ * The verifier panel's shared secret (`x-demo-admin-secret` on the real endpoints).
+ *
+ * The mock has nothing to compare against — there is no server env here — so any non-empty
+ * value passes and an unset one is UNAUTHORIZED. That is the case worth reproducing:
+ * `realApi` sends the header with an empty string until the operator types the secret in, so
+ * a mock with no gate at all lets the review queue be built against a 200 the real server
+ * will never return.
+ */
+function requireAdminSecret() {
+  if (!store.adminSecret) {
+    throw new ApiRequestError("UNAUTHORIZED", "Missing or invalid admin secret.", 401);
+  }
+}
+
+/**
+ * Mirrors `setDemoAdminSecret` in lib/realApi.ts, which is the one VerifierView calls. A
+ * demo-day swap of a verifier method back to the mock has to call this one too, or the queue
+ * answers UNAUTHORIZED for the rest of the demo with nothing on screen to explain why.
+ */
+export function setMockDemoAdminSecret(secret: string) {
+  store.adminSecret = secret.trim();
 }
 
 function checkNullifierReplay(proof: unknown, action: string) {
@@ -306,6 +332,7 @@ async function submitProperty(input: SubmitPropertyInput): Promise<SubmitPropert
 
 async function listPendingVerifications(): Promise<ListPendingVerificationsResult> {
   await delay(300);
+  requireAdminSecret();
   const pending = Array.from(store.properties.values())
     .filter((p) => p.state === "PENDING_REVIEW")
     .map((p) => ({
@@ -324,6 +351,16 @@ async function decideVerification(input: DecideVerificationInput): Promise<Decid
   await delay(500);
   const property = store.properties.get(input.propertyId);
   if (!property) throw new ApiRequestError("PROPERTY_NOT_FOUND", "Property not found.", 404);
+
+  // Deciding an already-decided property signs a second attestation with a fresh expiry,
+  // which quietly extends the first one past the freshness window tokenize relies on.
+  if (property.state !== "PENDING_REVIEW") {
+    throw new ApiRequestError(
+      "OWNERSHIP_PENDING",
+      `Only a property awaiting review can be decided; this one is ${property.state}.`,
+      422,
+    );
+  }
 
   if (input.decision === "REJECTED") {
     const reason = input.reason ?? "Not specified";
@@ -450,6 +487,13 @@ async function buy(input: BuyInput): Promise<BuyResult> {
   const property = store.properties.get(input.propertyId);
   if (!property || !property.tokenId) {
     throw new ApiRequestError("PROPERTY_NOT_FOUND", "This property has not been tokenized yet.", 404);
+  }
+
+  // Only `primary` reads this field — the other two modes move shares between fixed demo
+  // accounts — so the empty string an untouched form field sends is only a problem here. The
+  // real server coerces `""` to "not provided" and refuses exactly this case.
+  if (input.mode === "primary" && !input.buyerAccountId) {
+    throw new ApiRequestError("INVALID_INPUT", "buyerAccountId is required for a primary transfer.", 400);
   }
 
   if (input.mode === "nokyc") {
@@ -611,9 +655,30 @@ async function seed(): Promise<SeedResult> {
   pushEvent(property, "OWNERSHIP_APPROVED", {});
   pushEvent(property, "PROPERTY_TOKEN_CREATED", { tokenId });
 
+  // PROP-003 is the property the rental flow lists: APPROVED and deliberately never
+  // tokenized, because renting an asset whose shares are already sold would create two claims
+  // on it. Seeding it is what removed an unwritten ordering dependency — the rental scene
+  // used to work only if someone had run submit + approve by hand first, so after every
+  // restart it died with PROPERTY_NOT_FOUND. No attestation, as on the real server: without
+  // one tokenize refuses, which is what keeps "never tokenized" true rather than intended.
+  const rentalProperty: PropertyRecord = {
+    propertyId: "PROP-003",
+    displayName: "Graca Rental",
+    city: "Lisbon",
+    sellerAccountId: MOCK_OPERATOR,
+    tokenSymbol: "GRCA",
+    state: "APPROVED",
+    documentCount: 0,
+    submittedAt: new Date(start - 60000).toISOString(),
+    files: [],
+    events: [],
+    ensMode: "SALE",
+  };
+  store.properties.set("PROP-003", rentalProperty);
+
   return {
     seeded: true,
-    properties: ["PROP-001"],
+    properties: ["PROP-001", "PROP-003"],
     tokenId,
     // The mock has no balances to move, so the targets are always met. The real backend
     // re-reads them and can come back `ok: false` when the reservoir is exhausted — branch
@@ -722,9 +787,20 @@ async function rentalList(input: RentalListInput): Promise<RentalListResult> {
 
 async function rentalApply(input: RentalApplyInput): Promise<RentalApplyResult> {
   await delay(600);
-  checkNullifierReplay(input.proof, input.action);
   const rental = store.rentals.get(input.listingId);
   if (!rental) throw new ApiRequestError("PROPERTY_NOT_FOUND", "Listing not found.", 404);
+  // Ahead of the proof, in the real route's order. A nullifier is derived from (identity,
+  // action) and is the same value every time one person repeats one check, so spending it on
+  // an application the state machine was always going to refuse leaves that tenant unable to
+  // apply at all until someone clears the replay store.
+  if (rental.state !== "LISTED") {
+    throw new ApiRequestError(
+      "RENTAL_NOT_ENGAGED",
+      `This listing is ${rental.state}; only a LISTED property accepts applications.`,
+      422,
+    );
+  }
+  checkNullifierReplay(input.proof, input.action);
 
   rental.state = "APPLIED";
   rental.tenantAccountId = input.tenantAccountId;
@@ -758,6 +834,10 @@ async function rentalApply(input: RentalApplyInput): Promise<RentalApplyResult> 
 
 async function rentalEngage(input: RentalEngageInput): Promise<RentalEngageResult> {
   await delay(800);
+  // The session is checked before anything else, as on the real route. Without it a missing
+  // or expired Selfie session arrived as NOT_LANDLORD 403, so the UI's 401 handling — the
+  // "re-run the Selfie Check" path — was written against a mock that never produced one.
+  validSession(input.sellerSessionToken);
   const rental = store.rentals.get(input.listingId);
   if (!rental) throw new ApiRequestError("PROPERTY_NOT_FOUND", "Listing not found.", 404);
   if (rental.landlordSessionToken !== input.sellerSessionToken) {
@@ -786,6 +866,10 @@ async function rentalEngage(input: RentalEngageInput): Promise<RentalEngageResul
 
 async function rentalSettle(input: RentalSettleInput): Promise<RentalSettleResult> {
   await delay(700);
+  // Session first, as in rentalEngage: an expired session is 401, never NOT_LANDLORD. The
+  // rental flow is where it actually happens — one session has to survive list → apply →
+  // engage → the whole lock window → settle.
+  validSession(input.sellerSessionToken);
   const rental = store.rentals.get(input.listingId);
   if (!rental) throw new ApiRequestError("PROPERTY_NOT_FOUND", "Listing not found.", 404);
   if (rental.landlordSessionToken !== input.sellerSessionToken) {

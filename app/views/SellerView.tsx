@@ -64,7 +64,18 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
   const [rejectReason, setRejectReason] = useState<string | null>(null);
   const [tokenizeResult, setTokenizeResult] = useState<{ tokenId: string; hashscanUrl: string } | null>(null);
 
-  const step = !session ? 0 : !documentRoot ? 1 : propertyState !== "TOKENIZED" ? 2 : 4;
+  // APPROVED is its own step, not the tail of Review: it is exactly when the Tokenize card
+  // appears. Collapsing it into "everything that is not TOKENIZED" meant index 3 was never
+  // reached, so the bar jumped from Review to ENS while the seller was being asked to mint.
+  const step = !session
+    ? 0
+    : !documentRoot
+      ? 1
+      : propertyState === "TOKENIZED"
+        ? 4
+        : propertyState === "APPROVED"
+          ? 3
+          : 2;
 
   async function handleProof(proof: Record<string, unknown>) {
     setBusy("selfie");
@@ -92,6 +103,15 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
     }
   }
 
+  // For the two calls that carry the session token. A session lasts 30 minutes by default
+  // and nothing on screen notices it lapsing: the badge keeps reading "Session active", every
+  // submit and refresh 401s, and the World button is gated on `!session` so it never returns.
+  // Dropping the session is what puts Selfie Check back within reach.
+  function reportError(e: unknown) {
+    if (e instanceof ApiRequestError && e.code === "SELLER_SESSION_EXPIRED") setSession(null);
+    setError(e as ApiRequestError);
+  }
+
   async function handleSubmit() {
     if (!session) return;
     setBusy("submit");
@@ -116,7 +136,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
       setDocumentRoot(res.documentRoot);
       setPropertyState(res.state);
     } catch (e) {
-      setError(e as ApiRequestError);
+      reportError(e);
     } finally {
       setBusy(null);
     }
@@ -147,7 +167,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
         setTokenizeResult({ tokenId: res.tokenId, hashscanUrl: res.hashscanUrl });
       }
     } catch (e) {
-      setError(e as ApiRequestError);
+      reportError(e);
     } finally {
       setBusy(null);
     }
@@ -361,7 +381,9 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
           note={
             error instanceof ApiRequestError && error.code === "WORLD_PROOF_REPLAY"
               ? "A World nullifier is derived from (identity, app, action), so it is the same value every time one person repeats one check — the second rehearsal always lands here. Clear it with the \u201cClear World replay guard\u201d button in the Buyer column."
-              : undefined
+              : error instanceof ApiRequestError && error.code === "SELLER_SESSION_EXPIRED"
+                ? "The session has been cleared here too, so the Selfie Check button is back. A session is not bound to a property — the review state is held server-side, so verify again and Refresh status picks up where this left off."
+                : undefined
           }
         />
       )}

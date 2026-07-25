@@ -152,12 +152,28 @@ export async function grantKyc(
   accountId: AccountId | string,
   client: Client = getClient(),
 ): Promise<string> {
-  const response = await new TokenGrantKycTransaction()
-    .setTokenId(tokenId)
-    .setAccountId(typeof accountId === 'string' ? AccountId.fromString(accountId) : accountId)
-    .execute(client)
+  let response
+  try {
+    response = await new TokenGrantKycTransaction()
+      .setTokenId(tokenId)
+      .setAccountId(typeof accountId === 'string' ? AccountId.fromString(accountId) : accountId)
+      .execute(client)
 
-  await response.getReceipt(client)
+    await response.getReceipt(client)
+  } catch (error) {
+    // Mapped here rather than in one route. "Not associated" is the single failure a real
+    // buyer can fix themselves, and /api/dev/kyc called this raw — so the recovery endpoint,
+    // the one reached for when a rehearsal is already stuck, could only answer with a 500.
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes('TOKEN_NOT_ASSOCIATED_TO_ACCOUNT')) {
+      throw new ApiError(
+        'TOKEN_NOT_ASSOCIATED',
+        'This account must associate the token before KYC can be granted.',
+        { hederaStatus: 'TOKEN_NOT_ASSOCIATED_TO_ACCOUNT', tokenId },
+      )
+    }
+    throw error
+  }
   const transactionId = response.transactionId.toString()
 
   recordTransaction({

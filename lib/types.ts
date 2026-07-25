@@ -50,6 +50,18 @@ export type Property = {
   submittedAt?: string
   decidedAt?: string
   rejectionReason?: string
+  /**
+   * The seller session that submitted this property.
+   *
+   * Sessions were unbound: any Selfie Check produced a token that could read any property.
+   * That mattered because `rejectionReason` is the reviewer's free text — the one field
+   * deliberately reduced to a hash before HCS, precisely because free text is where personal
+   * data ends up ("the deed lists a date of birth…"). It also let any session holder
+   * re-submit against an existing propertyId and overwrite it.
+   *
+   * Absent on seeded properties, which have no submitter and are readable by design.
+   */
+  ownerSessionToken?: string
   /** Salted Merkle root of the documents (hex). This is the only thing that goes on-chain. */
   documentRoot?: string
   documentCount: number

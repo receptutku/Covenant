@@ -52,7 +52,11 @@ export function BuyerView() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ApiRequestError | Error | null>(null);
 
-  const step = !ens ? 0 : !kyc ? 2 : !buyResult ? 3 : 4;
+  // An account id is what the Association step produces, so index 1 is current until one
+  // exists — /api/health fills it, and while it is empty the KYC and Buy calls have no
+  // account to name. Jumping straight to 2 pointed the audience at Identity/KYC in exactly
+  // the state where the button under it is disabled.
+  const step = !ens ? 0 : !buyerAccountId ? 1 : !kyc ? 2 : !buyResult ? 3 : 4;
 
   async function handleSeed() {
     setBusy("seed");
@@ -238,7 +242,7 @@ export function BuyerView() {
             disabled={busy === "ens"}
             className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
           >
-            {busy === "ens" ? "Reading..." : "Read live ENS config"}
+            {busy === "ens" ? "Reading..." : ens ? "Re-read live ENS config" : "Read live ENS config"}
           </button>
         </div>
 
@@ -259,6 +263,20 @@ export function BuyerView() {
                 ))}
               </tbody>
             </table>
+            {/*
+              The resolve time, not "live": tokenizing republishes the token id to ENS in the
+              background, and a read taken while that Sepolia write is still confirming returns
+              the previous run's id — which is how the discovery panel ended up contradicting
+              the transfer on the adjacent screen. The timestamp is the honest part of the
+              answer, since a re-read may legitimately be served from the server's 60s cache
+              and carry the same one.
+            */}
+            <p className="mt-2 text-zinc-500">
+              Resolved at {new Date(ens.resolvedAt).toLocaleTimeString()}. Tokenizing republishes the token id in
+              the background, so a read taken while that write is confirming still shows the previous run&apos;s id —
+              re-read to pick up the new one. Reads are cached for up to 60s: an unchanged timestamp means the same
+              resolution was served again, not that the value was re-confirmed.
+            </p>
           </div>
         )}
       </ActionCard>

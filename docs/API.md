@@ -27,7 +27,10 @@ CONTRACT-VERSION: 5
 
 ## 0. General rules
 
-- All requests and responses are `application/json`.
+- All requests and responses are `application/json`, and the content type is **enforced** on
+  every `POST`: a body sent as anything else is rejected with `INVALID_INPUT`. That is a
+  security control, not pedantry — `text/plain` makes a POST a CORS *simple* request, so no
+  preflight runs and the allow-list never gets consulted.
 - Successful response: `200`, following the endpoint schemas below.
 - Error responses **always** use this envelope:
 
@@ -317,9 +320,22 @@ Beyond the declared limits, `UNSUPPORTED_FILE_TYPE` also fires when a file's act
 bytes disagree with its declared `type` (a `.exe` labelled `application/pdf`), or when
 `dataBase64` decodes to nothing.
 
-**Errors:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
-`TOO_MANY_FILES` (400), `FILE_TOO_LARGE` (400), `UNSUPPORTED_FILE_TYPE` (400),
-`ALREADY_TOKENIZED` (409 — also returns the existing `tokenId`), `INVALID_INPUT` (400)
+**Errors:** `SELLER_SESSION_REQUIRED` (401 — no session, **or** the property was submitted by
+a different one), `SELLER_SESSION_EXPIRED` (401), `FILE_TOO_LARGE` (400),
+`UNSUPPORTED_FILE_TYPE` (400), `ALREADY_TOKENIZED` (409 — also returns the existing
+`tokenId`), `INVALID_INPUT` (400)
+
+> **A property can only be replaced from the session that submitted it.** Without that,
+> re-submitting against an existing id overwrote it — including the seeded `PROP-003`, which
+> is `APPROVED` and deliberately untokenized so the rental flow can list it. One stray upload
+> against that id resets it to `PENDING_REVIEW` and kills the rental scene, and the
+> `ALREADY_TOKENIZED` guard does not catch it, because `PROP-003` has no token.
+>
+> `TOO_MANY_FILES` is **not** reachable here: the Zod schema caps the array at 3 and runs
+> before the handler, so a fourth file is `INVALID_INPUT` with the field path `files`. The code
+> exists for the shared helper and is listed in §1 for that reason. The same shadowing applies
+> to `UNSUPPORTED_FILE_TYPE` for a *declared* type outside the allowed list — it survives only
+> for the magic-bytes and empty-payload cases, which is where it actually earns its keep.
 
 > `ALREADY_TOKENIZED` here means a resubmission against a property that already has a token
 > on-chain. It is refused rather than allowed to reset the property to `PENDING_REVIEW`,
@@ -334,7 +350,16 @@ below sequence ~190 that still carry it predate that decision and cannot be remo
 
 ## `GET /api/property?propertyId=PROP-002` — Current status of one property
 
-**Header:** `x-seller-session: <sellerSessionToken>` (or `?sellerSessionToken=` as a fallback).
+**Header:** `x-seller-session: <sellerSessionToken>`. Header only — the query-string fallback
+was removed, because it put a live credential into URLs, browser history and the tunnel's
+access log.
+
+> **A property belongs to the session that submitted it.** Reading one submitted by a different
+> session returns `401` / `SELLER_SESSION_REQUIRED`. Sessions were otherwise interchangeable,
+> and propertyIds are `PROP-NNN` — trivially enumerable — so any completed Selfie Check could
+> read every seller's `rejectionReason`, the one field deliberately reduced to a hash before it
+> reaches HCS. Seeded properties have no submitter and stay readable; they contain nothing a
+> seller wrote.
 
 > **This is the endpoint the seller's "Refresh status" button should call.** Do not derive
 > state from the HCS timeline. The timeline is the record of what *happened* and is public and
@@ -386,8 +411,9 @@ Metadata only. Document bytes, salts and per-file commitments never leave the se
 Drive the seller UI from `state` and `hasAttestation`: show the Tokenize button when
 `state === "APPROVED"`, and only after `state === "TOKENIZED"` show `tokenId` / `hashscanUrl`.
 
-**Errors:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
-`PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400 — no `propertyId`)
+**Errors:** `SELLER_SESSION_REQUIRED` (401 — no session, **or** the property belongs to a
+different one), `SELLER_SESSION_EXPIRED` (401), `PROPERTY_NOT_FOUND` (404), `INVALID_INPUT`
+(400 — no `propertyId`)
 
 **HCS:** none — this endpoint only reads.
 
@@ -1362,6 +1388,8 @@ before the lock expired; the message names the seconds remaining),
 | `buy` | `POST /api/buy` |
 | `readEns` | `POST /api/ens-read` |
 | `readAudit` | `GET /api/audit` |
+| `getProperty` | `GET /api/property` |
+| `health` | `GET /api/health` |
 | `seed` | `POST /api/seed` |
 | `reset` | `POST /api/reset` |
 | `rentalList` | `POST /api/rental/list` |
@@ -1370,7 +1398,7 @@ before the lock expired; the message names the seconds remaining),
 | `rentalSettle` | `POST /api/rental/settle` |
 | `rentalExpire` | `POST /api/rental/expire` |
 
-`GET /api/health` and the `/api/dev/*` routes have **no method on `PprevApiClient`** —
+The `/api/dev/*` routes have **no method on `PprevApiClient`** —
 call them with a plain `fetch`. The one exception is the standalone helper
 `devIssueSellerSession(adminSecret)` exported by `lib/realApi.ts`, which posts to
 `/api/dev/session`; it sits outside the interface on purpose, so the dev bypass cannot be

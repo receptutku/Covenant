@@ -37,15 +37,29 @@ export const GET = handler(async (request) => {
   // in a status endpoint, and the UI already receives it from /api/verifier/decision.
   // The session gates the reviewer's free text, which is the other thing worth protecting.
   //
-  // Honest limitation: sessions are not bound to a property or an account, so any session
-  // holder can read any property's status. That is the same account-binding gap documented
-  // for buyer KYC, and closing it properly needs the account to sign into the World action
-  // context. It is a real improvement over anonymous access, not a complete answer.
-  requireSellerSession(
-    request.headers.get('x-seller-session') ?? url.searchParams.get('sellerSessionToken') ?? undefined,
-  )
+  // Honest limitation: a session is bound to the properties it submitted (see below), but not
+  // to a Hedera account. Completing Selfie Check makes you a verified unique human who owns
+  // what you submit; nothing ties that to the account id you later name. Closing it properly
+  // needs the account to sign into the World action context — the same account-binding gap
+  // documented for buyer KYC.
+  // Header only. The query-string fallback put a live credential into URLs, browser history
+  // and the tunnel's access log, and nothing used it — the client sends the header.
+  const session = requireSellerSession(request.headers.get('x-seller-session') ?? undefined)
 
   const property = requireProperty(propertyId)
+
+  // Bound to the session that submitted it. Sessions are otherwise interchangeable, so any
+  // Selfie Check could read any property — and propertyIds are `PROP-NNN`, trivially
+  // enumerable. What that exposed is `rejectionReason`: the reviewer's full free text, which
+  // is the one field deliberately reduced to a hash before it reaches HCS, precisely because
+  // free text is where personal data ends up. Seeded properties carry no owner and stay
+  // readable; they contain nothing a seller wrote.
+  if (property.ownerSessionToken && property.ownerSessionToken !== session.token) {
+    throw new ApiError(
+      'SELLER_SESSION_REQUIRED',
+      'This property belongs to a different session.',
+    )
+  }
 
   return jsonResponse({
     propertyId: property.propertyId,

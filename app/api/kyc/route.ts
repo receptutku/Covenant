@@ -71,7 +71,7 @@ export const POST = handler(async (request) => {
   // nothing from the buyer.
   const associationTxId = await associateIfPossible(property.tokenId, body.buyerAccountId)
 
-  const kycTxId = await grantKycOrExplain(property.tokenId, body.buyerAccountId)
+  const kycTxId = await grantKyc(property.tokenId, body.buyerAccountId)
 
   await submitEventSafe(HCS_EVENTS.KYC_GRANTED, property.propertyId, {
     tokenId: property.tokenId,
@@ -99,24 +99,4 @@ async function associateIfPossible(
 
   const result = await associateToken(tokenId, account)
   return result.transactionId
-}
-
-/**
- * Grants KYC, translating the "not associated" failure into guidance rather than a raw
- * network error — that is the one failure a real buyer can actually fix themselves.
- */
-async function grantKycOrExplain(tokenId: string, accountId: string): Promise<string> {
-  try {
-    return await grantKyc(tokenId, accountId)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (message.includes('TOKEN_NOT_ASSOCIATED_TO_ACCOUNT')) {
-      throw new ApiError(
-        'TOKEN_NOT_ASSOCIATED',
-        'This account must associate the token before KYC can be granted.',
-        { hederaStatus: 'TOKEN_NOT_ASSOCIATED_TO_ACCOUNT', tokenId },
-      )
-    }
-    throw error
-  }
 }

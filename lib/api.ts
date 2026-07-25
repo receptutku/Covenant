@@ -33,6 +33,16 @@ export function jsonResponse<T>(body: T, status = 200): NextResponse<T> {
  * invalid request could leak a document's base64 payload or a proof into the error message.
  */
 export async function parseBody<T>(request: Request, schema: ZodType<T>): Promise<T> {
+  // A JSON content type is required, and that is a security control rather than pedantry.
+  // `text/plain` makes a POST a CORS *simple* request: no preflight, so the allow-list in
+  // proxy.ts never runs and any page on the internet can drive an unauthenticated endpoint
+  // on whoever has our tunnel open. Requiring JSON forces the preflight, which is where that
+  // decision actually gets made.
+  const contentType = request.headers.get('content-type') ?? ''
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new ApiError('INVALID_INPUT', 'Request body must be sent as application/json.')
+  }
+
   let raw: unknown
   try {
     raw = await request.json()

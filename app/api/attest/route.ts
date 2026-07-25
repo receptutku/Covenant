@@ -20,7 +20,7 @@ import { withLock } from '@/lib/lock'
  */
 export const POST = handler(async (request) => {
   const body = await parseBody(request, attestSchema)
-  requireSellerSession(body.sellerSessionToken)
+  const session = requireSellerSession(body.sellerSessionToken)
 
   // Shares a key namespace with /api/tokenize, which is the point. Tokenize reads the
   // property, spends seconds minting, then writes back its snapshot — so a resubmission
@@ -43,6 +43,22 @@ export const POST = handler(async (request) => {
     )
   }
 
+  // A property belongs to the session that submitted it.
+  //
+  // Without this, any Selfie Check produced a token that could overwrite ANY existing
+  // property by re-submitting against its id — including the seeded PROP-003, which is
+  // APPROVED and deliberately untokenized so the rental flow can list it. One stray
+  // submission against that id resets it to PENDING_REVIEW and kills the rental scene
+  // mid-demo, and the TOKENIZED guard above does not catch it because PROP-003 is not
+  // tokenized. Seeded properties have no owner and are left alone; only a property that was
+  // actually submitted by someone is protected.
+  if (existing?.ownerSessionToken && existing.ownerSessionToken !== session.token) {
+    throw new ApiError(
+      'SELLER_SESSION_REQUIRED',
+      'This property was submitted by a different session and cannot be replaced from this one.',
+    )
+  }
+
   const files = decodeFiles(body.files)
   const { root, commitments } = commitDocuments(body.propertyId, files)
 
@@ -61,6 +77,7 @@ export const POST = handler(async (request) => {
     documentCount: files.length,
     files,
     commitments,
+    ownerSessionToken: session.token,
     // A resubmission invalidates any earlier decision: the documents changed, so the
     // previous attestation no longer describes this property.
     attestation: undefined,

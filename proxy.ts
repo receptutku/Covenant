@@ -55,7 +55,11 @@ export function proxy(request: NextRequest) {
   if (request.method === 'OPTIONS') {
     return new NextResponse(null, {
       status: 204,
-      headers: { 'Access-Control-Allow-Origin': origin, ...CORS_HEADERS },
+      // `Vary: Origin` belongs on BOTH branches. The allowed origin varies per request, so a
+      // shared cache that does not key on it can serve one origin's preflight — and its
+      // Access-Control-Allow-Origin — to another. Harmless while every origin is allowed;
+      // a bypass the moment the list is narrowed, which is exactly when nobody re-reads this.
+      headers: { 'Access-Control-Allow-Origin': origin, Vary: 'Origin', ...CORS_HEADERS },
     })
   }
 
