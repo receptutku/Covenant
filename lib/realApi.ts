@@ -205,8 +205,13 @@ export const realApi: PprevApiClient = {
 
   readEns: (input: ReadEnsInput) => post<ReadEnsResult>("/api/ens-read", input),
 
+  // An empty id means "the whole protocol trail", so the parameter is omitted
+  // rather than sent empty — `?propertyId=` is a request for a property whose id
+  // is the empty string, which is a different question.
   readAudit: (propertyId: string) =>
-    get<ReadAuditResult>(`/api/audit?propertyId=${encodeURIComponent(propertyId)}`),
+    get<ReadAuditResult>(
+      propertyId ? `/api/audit?propertyId=${encodeURIComponent(propertyId)}` : "/api/audit",
+    ),
 
   // Read `state` from here, never from the audit trail: HCS records what happened and is
   // public, so `rejectionReason` is only ever a hash there. This is the server's current view.

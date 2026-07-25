@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SellerView } from "@/app/views/SellerView";
 import { VerifierView } from "@/app/views/VerifierView";
 import { BuyerView } from "@/app/views/BuyerView";
+import { AuditTimeline } from "@/app/views/AuditTimeline";
 import type { Attestation } from "@/lib/api-types";
 
 const TABS = [
@@ -79,6 +80,17 @@ export default function Home() {
           <BuyerView />
         </div>
       </main>
+
+      {/*
+        Full width and always visible, below all three roles: this panel is the
+        claim that none of the above has to be taken on trust, and it reads from
+        a public source rather than from anything the three columns own.
+      */}
+      <section className="p-4 pt-0 sm:p-6 sm:pt-0">
+        <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <AuditTimeline />
+        </div>
+      </section>
     </div>
   );
 }
