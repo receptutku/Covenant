@@ -198,7 +198,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
         <StepIndicator steps={STEPS} activeIndex={step} />
       </div>
 
-      <ActionCard title="1. Selfie Check (World ID)" description="No liveness proof, no document upload — the seller gate." active={step === 0}>
+      <ActionCard title="1. Selfie Check (World ID)" description="Proof of a live human, without a document upload — the seller gate." active={step === 0}>
         {!session ? (
           <div className="flex flex-col gap-2">
             <WorldVerifyButton
