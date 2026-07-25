@@ -170,6 +170,48 @@ live records.
 
 ---
 
+## What we deliberately did not build
+
+Two of these were raised by mentors. We are naming all three ourselves, because a judge who
+finds a limitation we hid discounts everything else we claimed.
+
+**There is no database.** Application state — properties, sessions, the review queue — lives
+in server memory and is lost on restart. That is a scope decision, and the precise version of
+it matters more than the label.
+
+A production PPREV *does* have a database. It does not have the documents in it. The whole
+argument of this project is that the status quo leaves "a database of passport scans waiting
+for a breach", so the answer to durability is not to build one and dump the deeds into it —
+it is to persist the state machine, the commitments and the roots, and leave the bytes with
+the seller. That distinction is already the design: document bytes and salts are the only
+things in the system that touch neither disk nor chain.
+
+What that costs us today is bounded and worth stating exactly. **Nothing a counterparty
+relies on is in memory.** The token, the fixed supply, the KYC grants, every transfer, the fee,
+the audit trail and the escrowed HBAR are on Hedera; the protocol config is in ENS. A restart
+loses the review queue, seller sessions and any property mid-flow — about ninety seconds to
+rebuild, and `docs/RUNBOOK.md` measures it rather than estimating.
+
+**The one case that is genuinely uncomfortable**, and we would rather say it than have it
+found: if the server restarts while a rental is `ENGAGED`, the deposit is locked on-chain but
+the listing is gone from memory, so `settle` and `expire` can no longer be reached through the
+API. In this demo nothing is lost, because escrow, landlord and operator are the same account
+— the HBAR is already where it would be refunded from. In production those are three different
+accounts, and then it is a real stuck-funds case. Persisting the rental state machine is the
+first thing a database would be for here, which is a more useful answer than "we ran out of
+time".
+
+**The income predicate is asserted, not proven.** `/api/rental/apply` returns
+`incomeProven: false`. The threshold is real and derived from the landlord's listing, so an
+applicant cannot set their own bar — but nothing proves the tenant clears it. That needs a
+zkTLS transcript and a circuit over it. We built the shape of where it plugs in and what it
+must output.
+
+**A World proof is not bound to a Hedera account.** It shows that a unique human performed an
+action, not that a particular account did; the account id arrives in the same request and is
+not cryptographically tied to the proof. Closing it needs the account inside the World action
+context. This is the same gap in three places, and we name it the same way in all three.
+
 ## Demo notes
 
 Environment is staging, so verification runs against the World Simulator — a staging app
