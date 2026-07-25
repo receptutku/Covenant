@@ -98,7 +98,7 @@ real one, so a single endpoint can be swapped back without reverting anything el
 page-level React state, because in this single-page demo the verifier and the seller are two
 components rather than two people; a real deployment needs an endpoint for it. The demo
 account ids are read from `/api/health` at runtime after hard-coded ones cost us an hour of
-failures against accounts that did not exist. And two development-only routes exist behind
+failures against accounts that did not exist. And four development-only routes exist behind
 an admin secret — one issues a seller session without a World proof, one clears recorded
 proof digests between rehearsals — because World nullifiers are deterministic and the second
 rehearsal of the day is otherwise refused at step one.
@@ -147,7 +147,8 @@ and an environment mismatch that returns the identical error a forged proof gets
 ### ENS
 
 Not a naming veneer. Each property's subname carries the protocol configuration the client
-needs, resolved live before the buyer flow renders, written programmatically on the v2
+needs, resolved live from Sepolia on demand — the buyer reads it with a button, and the panel
+shows when it resolved — written programmatically on the v2
 alpha. Rental properties carry a different field set and clients branch on
 `com.pprev.mode`.
 

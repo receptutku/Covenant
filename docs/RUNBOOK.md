@@ -161,9 +161,10 @@ one you saw in the rp-signature and rejection tests."
 
 ### 4b. A rental was ENGAGED when the server restarted
 
-The deposit is locked on-chain but the listing is gone from memory, so `settle` and
-`expire` both answer `PROPERTY_NOT_FOUND` — that escrow cannot be released through the API
-again. **Nothing is lost:** escrow, landlord and operator are the same account in this
+The deposit is locked on-chain but the listing is gone from memory. `expire` answers
+`PROPERTY_NOT_FOUND`; `settle` answers `SELLER_SESSION_REQUIRED` first, because it validates
+the session before it looks the listing up — the sessions died with the store too. Either way
+that escrow cannot be released through the API again. **Nothing is lost:** escrow, landlord and operator are the same account in this
 demo, so the HBAR is already sitting in the operator's balance.
 
 Do not try to recover it live. Start a fresh listing (`rental/list` → `apply` → `engage`)
@@ -230,7 +231,7 @@ hostile one look identical to the code, so the code refuses both.
 
 | Rule | Why | If it happens anyway |
 |---|---|---|
-| **Never upload against PROP-001 or PROP-003.** | Both are seeded. PROP-001 carries the fee and no-KYC scenes; PROP-003 is `APPROVED` and deliberately untokenized so the rental flow can list it. Neither has an owning session, so the ownership guard does **not** protect them. | `npm run seed` rewrites both. |
+| **Never upload against PROP-001 or PROP-003.** | Both are seeded. PROP-001 carries the fee and no-KYC scenes; PROP-003 is `APPROVED` and deliberately untokenized so the rental flow can list it. Neither has an owning session, so the ownership guard does **not** protect them. | Re-seed with the curl in "Before going on stage" — there is no `npm run seed`. |
 | **Run Identity Check exactly once, on buyer1.** | The `verify-buyer` nullifier is per identity+action; the account id is not part of it. Switching to buyer2 and verifying again is `WORLD_PROOF_REPLAY`, with no explanation on screen. | Harmless — seed already granted KYC to both buyers. Or use the dev grant. |
 | **Type the admin secret in the Verifier column, and do it last.** | It is one module-global value shared with the Buyer column's Seed button. A typo there silently breaks the Verifier's next Approve, in a different column, with nothing linking them. | Re-type it in the Verifier column and click **Load pending** again. |
 | **Click "Load pending" after the seller submits, not before.** | The queue never refreshes itself. Clicking early shows "Queue is empty" forever, which looks like a failure and is not. | Click it again. |

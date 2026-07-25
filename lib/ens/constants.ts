@@ -1,13 +1,19 @@
 /**
- * ENS v1 deployment on Sepolia.
+ * ENS addresses on Sepolia.
  *
- * We target the classic (v1) deployment deliberately. The name is also registered on the
- * ENSv2 alpha at app.ens.dev, but that deployment carries two properties a live demo
- * cannot absorb: ENS documents that alpha state "may be reset periodically due to routine
- * contract deployments", and v2's hierarchical registries are not yet resolvable by viem
- * or ensjs. v1 is boring, and boring is what a demo needs.
+ * READ THIS BEFORE BELIEVING THE v1 CONSTANTS BELOW. This project runs on the **ENSv2
+ * alpha**, resolved through the UniversalResolver further down. The v1 registry, base
+ * registrar and controller addresses are leftovers from a path we tried and abandoned:
+ * registering a name the classic way on Sepolia reverted on `makeCommitment` and the
+ * controllers we could reach were unauthorised. They survive only because
+ * `scripts/ens-register.ts` and `scripts/ens-check.ts` still speak v1.
  *
- * Addresses are identical across networks for the registry and base registrar; the
+ * A consequence worth knowing: `npm run ens:check` queries the v1 registry, where a v2 name
+ * does not exist, so it reports our live, working name as unregistered. Measured — even the
+ * parent `pprevlisbon.eth` returns owner `0x0` there. That is not an error, it is the wrong
+ * instrument, and it is written up in docs/FEEDBACK_ens.md.
+ *
+ * The v1 addresses are identical across networks for the registry and base registrar; the
  * controller and resolver are Sepolia-specific.
  */
 

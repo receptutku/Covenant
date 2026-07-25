@@ -100,7 +100,7 @@ instead of a share transfer. One core, two modes.
 |---|---|---|
 | **Hedera** | HTS token with a KYC key and an immutable 2% fractional fee; HCS append-only audit topic; Mirror Node as the read path for everything the UI claims. No Solidity — every operation is a native SDK transaction. | [`docs/EVIDENCE.md`](docs/EVIDENCE.md) · `npm run e2e:sale` |
 | **World** | World ID 4.0 with three separate actions (`onboard-seller`, `verify-buyer`, `verify-tenant`) so one person can be a seller, a buyer and a tenant without burning a nullifier. Proofs are re-verified server-side; `success: true` from the client is never trusted. | [`docs/FEEDBACK_selfie.md`](docs/FEEDBACK_selfie.md) · [`docs/FEEDBACK_identity.md`](docs/FEEDBACK_identity.md) |
-| **ENS** | Per-property subnames on the ENSv2 alpha carrying protocol config as text records, written programmatically and resolved live before the buyer flow renders. **ENS is checked before every share transfer and can refuse one:** a record naming a token this protocol did not create returns `ENS_CONFIG_MISMATCH` and nothing moves. A stale record does not block, and neither does an unreachable resolver — only a substituted one. | `npm run test:ens-guard` (4/4, live records) · `npm run ens:write` · the ENS panel in the Buyer column |
+| **ENS** | Per-property subnames on the ENSv2 alpha carrying protocol config as text records, written programmatically and resolved live from Sepolia on demand. **ENS is checked before every share transfer and can refuse one:** a record naming a token this protocol did not create returns `ENS_CONFIG_MISMATCH` and nothing moves. A stale record does not block, and neither does an unreachable resolver — only a substituted one. | `npm run test:ens-guard` (4/4, live records) · `npm run ens:write` · the ENS panel in the Buyer column |
 
 <!-- ═══════════ END OF TOP HALF ═══════════ -->
 
@@ -136,7 +136,7 @@ anyone can apply the same rule to the same topic and reach the same list.
 **Payloads carry no personal data going forward, and the past is still there.**
 `/api/attest` now publishes a document root and a count, nothing else. But the payload
 guard matches key *names*, not values, so 39 early `PROPERTY_SUBMITTED` messages
-(sequence 2 to 189 of 248) permanently contain a `city` field. That topic is linked from
+(sequence 2 to 189) permanently contain a `city` field. That topic is linked from
 [`docs/EVIDENCE.md`](docs/EVIDENCE.md) and those messages are not coming off it. A log
 that still shows our own mistake is the honest form of this claim.
 
@@ -156,7 +156,9 @@ Zero. No `.sol` files, no hardhat/foundry/ethers, no EVM deploy step — verify 
 `find . -name "*.sol" -not -path "./node_modules/*"`. Every on-chain operation is a
 native Hedera SDK transaction (`TokenCreateTransaction`, `TokenGrantKycTransaction`,
 `TransferTransaction`, `TopicCreateTransaction`, `TopicMessageSubmitTransaction`).
-`viem`/`ensjs` appear only to read and write ENS records on Sepolia.
+`viem` appears only to read and write ENS records on Sepolia. (`@ensdomains/ensjs` is still in
+`package.json` from the abandoned v1 registration path and is imported by nothing — a leftover,
+not a dependency of the working code.)
 
 ## Setup
 
@@ -184,8 +186,10 @@ npm run dev                    # http://localhost:3000
 ```
 
 Without World credentials, run `npm run dev:noworld` instead: proofs are accepted without
-verification, every acceptance is logged loudly, and a production build refuses to start that
-way. It is the fastest path to seeing the flow work.
+verification and every acceptance is logged loudly. A production build does not refuse to
+start without World credentials — it starts and reports itself as `dev-fallback` on
+`/api/health`; what it refuses is to accept an unverified proof, which is the check that
+matters. This is the fastest path to seeing the flow work.
 
 ### Running the full demo yourself
 
