@@ -175,6 +175,42 @@ is asserted rather than proven in this build, because claiming otherwise would b
 and what a custom or parameterised predicate will look like when it lands. That is the
 question every application-side integrator has to answer before designing their flow.
 
+### 6. A staging/production mismatch is indistinguishable from a bad proof
+
+We hit this on a real device on demo day. Everything verified through the simulator; the same
+flow scanned with a real World App was rejected. The rejection is a generic proof failure —
+nothing in the response, and nothing in the logs, points at the environment.
+
+What makes it hard to diagnose from the integrator's side:
+
+- `environment` is a field on the **verify request**, but per the docs it is a property of the
+  **app registration** ("Staging apps must use the Worldcoin Simulator, whereas production apps
+  will use the World App"). So it looks like a per-call switch and behaves like a fixed
+  attribute. We spent our search budget probing the API — `environment: "staging"` and
+  `environment: "production"` return byte-identical validation errors for the same `rp_id`,
+  so you cannot even determine which environment your own app is registered in by asking.
+- `signRequest()` does not cover `environment` in the signed message
+  (`version || nonce || createdAt || expiresAt || action?`). The RP signature is
+  environment-agnostic, which reads as "this is just a label" — right up until it silently
+  decides whether your proof is accepted.
+- The default is `production`, while the thing a developer builds against first is the
+  simulator, which needs `staging`. So the default is wrong for the first hour of every
+  integration and wrong again the first time you test on a real phone.
+
+Two things would have saved us the whole detour:
+
+1. A distinct error code — `environment_mismatch`, or anything other than the same rejection a
+   forged proof gets. The verifier knows both facts; it is the only party that does.
+2. Surfacing the app's environment somewhere readable — the portal page, or a `GET` on the
+   `rp_id`. Right now the only way to find out is to have a proof from each side and see which
+   one is accepted.
+
+Smaller note in the same area: the staging domain (`staging-developer.worldcoin.org`) and the
+`environment` field are two mechanisms for one distinction, and the docs do not say whether
+they are alternatives or whether both must agree. We used the primary domain with
+`environment: "staging"` and the simulator worked, so they are evidently independent — but we
+established that empirically rather than from the documentation.
+
 ### What worked well
 
 - The staging environment let us build and verify the whole server path before touching a

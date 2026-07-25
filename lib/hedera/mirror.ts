@@ -21,8 +21,15 @@ async function mirrorGet<T>(path: string): Promise<T | null> {
   for (const delay of RETRY_DELAYS_MS) {
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay))
     try {
+      // Undici's default body timeout is 300 SECONDS, and this loop runs three attempts
+      // over a paginated read — so a connection that opens and then goes silent (the
+      // classic conference-wifi failure, as opposed to a clean refusal) could hang the
+      // audit timeline for a quarter of an hour with the button still spinning. Mirror is
+      // a read replica of data we already hold a receipt for: a slow answer is worth less
+      // than a fast "not yet", and the caller already degrades to a shorter list.
       const response = await fetch(`${mirrorNodeBaseUrl()}${path}`, {
         headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(4_000),
       })
       // A 404 is a real answer ("no such record"), not a transient failure worth retrying.
       if (response.status === 404) return null
