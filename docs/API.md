@@ -876,6 +876,40 @@ honest record of what happened.
 **Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404 — unknown `listingId`),
 `RENTAL_NOT_ENGAGED` (422 — the listing is not `LISTED`), `INVALID_INPUT` (400)
 
+## `POST /api/dev/kyc` — KYC grant without a World proof
+
+**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
+
+**Request**
+
+```json
+{ "propertyId": "PROP-002", "buyerAccountId": "0.0.654321" }
+```
+
+**Response 200** — as `/api/kyc`, plus a `warning` field. `associationTxId` is `null` for
+accounts whose key the server does not hold.
+
+The buyer counterpart to `/api/dev/session`. The seller side could already be driven from a
+script; the buyer chain — World Identity → KYC grant → primary transfer — had no path that
+avoided the IDKit widget, so it could not be exercised without a human and a phone.
+
+`KYC_GRANTED` is still written to HCS, with `verifiedByWorld: false`.
+
+> **This will not grant KYC to the nokyc account**, and the guard is repeated here rather
+> than inherited. That account is the one the network must refuse; there is no revoke
+> endpoint, so a single successful bypass would end golden scene 1 permanently — a far
+> worse bug than the inconvenience this route exists to remove.
+
+> **You probably do not need this for the secondary-transfer scene.** `/api/seed` and every
+> tokenization already grant KYC to buyer1 **and** buyer2, so `mode: "secondary"` works
+> straight after a seed with no KYC call at all. Verify with `GET /api/health` →
+> `demoAccounts`, then check the pair on Mirror:
+> `GET /accounts/{buyer2}/tokens?token.id={tokenId}` should read `kyc_status: "GRANTED"`.
+
+**Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404 — unknown property, or the
+property has no token yet), `KYC_DENIED` (422 — the reserved nokyc account),
+`TOKEN_NOT_ASSOCIATED` (422), `INVALID_INPUT` (400)
+
 ## `POST /api/dev/clear-replay` — Forget used World proofs
 
 **Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>` · **Request:** empty body
@@ -1168,7 +1202,7 @@ before the lock expired; the message names the seconds remaining),
 | `rentalSettle` | `POST /api/rental/settle` |
 | `rentalExpire` | `POST /api/rental/expire` |
 
-`GET /api/health` and the three `/api/dev/*` routes have **no method on `PprevApiClient`** —
+`GET /api/health` and the `/api/dev/*` routes have **no method on `PprevApiClient`** —
 call them with a plain `fetch`. The one exception is the standalone helper
 `devIssueSellerSession(adminSecret)` exported by `lib/realApi.ts`, which posts to
 `/api/dev/session`; it sits outside the interface on purpose, so the dev bypass cannot be
