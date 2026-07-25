@@ -108,29 +108,21 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
   }
 
   async function handleRefreshStatus() {
+    if (!session) return;
     setBusy("refresh");
     setError(null);
     try {
-      // The contract has no dedicated "getPropertyStatus" call. /api/audit is real
-      // and public, so we derive the current state from the latest relevant HCS
-      // event instead of a mock-only shortcut.
-      const audit = await api.readAudit(propertyId);
-      const latest = [...audit.events].reverse();
-      if (latest.some((e) => e.eventType === "PROPERTY_TOKEN_CREATED")) {
-        setPropertyState("TOKENIZED");
-      } else if (latest.some((e) => e.eventType === "OWNERSHIP_APPROVED")) {
-        setPropertyState("APPROVED");
-      } else if (latest.some((e) => e.eventType === "OWNERSHIP_REJECTED")) {
-        setPropertyState("REJECTED");
-        const rejectedEvent = latest.find((e) => e.eventType === "OWNERSHIP_REJECTED");
-        setRejectReason((rejectedEvent?.payload?.reason as string | undefined) ?? "Not specified");
-      } else if (attestations[propertyId]) {
-        // The verifier has already approved in this session but the HCS message
-        // has not surfaced on the mirror node yet (a few seconds of lag). The
-        // signed attestation in hand is the stronger signal, so trust it.
-        setPropertyState("APPROVED");
-      } else if (latest.some((e) => e.eventType === "PROPERTY_SUBMITTED")) {
-        setPropertyState("PENDING_REVIEW");
+      // Ask the server about THIS property. The earlier version scanned the HCS
+      // timeline for event names, which answers a question about the topic
+      // rather than about one property — so every property read as "Tokenized"
+      // and the Tokenize button never appeared. The rejection reason also lives
+      // only here: on-chain there is just a hash of it, because a reviewer's
+      // free text is the natural place for personal data.
+      const res = await api.getProperty(propertyId, session.token);
+      setPropertyState(res.state);
+      setRejectReason(res.rejectionReason);
+      if (res.tokenId && res.hashscanUrl) {
+        setTokenizeResult({ tokenId: res.tokenId, hashscanUrl: res.hashscanUrl });
       }
     } catch (e) {
       setError(e as ApiRequestError);

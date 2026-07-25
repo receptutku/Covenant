@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiRequestError } from "@/lib/apiClient";
-import { devClearReplay, devGrantKyc } from "@/lib/realApi";
+import { devClearReplay, devGrantKyc, setDemoAdminSecret } from "@/lib/realApi";
 import type { ReadEnsResult, BuyResult, VerifyBuyerResult, SeedResult } from "@/lib/api-types";
 import { WorldVerifyButton } from "@/app/components/WorldVerifyButton";
 import { ActionCard } from "@/app/components/common/ActionCard";
@@ -59,6 +59,10 @@ export function BuyerView() {
     setError(null);
     setSeedResult(null);
     try {
+      // /api/seed is admin-guarded too. Without this the button 401s unless the
+      // verifier panel happens to have been unlocked first — an invisible
+      // ordering dependency between two unrelated columns.
+      setDemoAdminSecret(adminSecret.trim());
       const res = await api.seed();
       setSeedResult(res);
     } catch (e) {
@@ -167,6 +171,11 @@ export function BuyerView() {
         {seedResult && (
           <p className="mt-2 text-xs text-emerald-600">
             Seeded {seedResult.properties.join(", ")} · token {seedResult.tokenId} · {seedResult.elapsedMs}ms
+            {!seedResult.rebalanced.ok && (
+              <span className="block text-amber-600">
+                Share reservoir exhausted — the secondary scene will fail. Tell Recep before rehearsing.
+              </span>
+            )}
           </p>
         )}
 
@@ -375,8 +384,18 @@ export function BuyerView() {
             </dl>
             {buyResult.assessedCustomFees.length > 0 ? (
               <p className="mt-2 text-xs text-emerald-600">
-                The 2% fee was assessed by Hedera itself and routed to{" "}
-                {buyResult.assessedCustomFees[0].collectorAccountId} — the app never moves it.
+                {/*
+                  The chain charges max(1, floor(amount × 2%)) and shares are whole
+                  units, so below 50 shares the floor dominates and the effective
+                  rate is not 2%. Saying "2%" there would be false on-screen.
+                */}
+                {buyResult.feeFloorApplied
+                  ? `Fee floor applied: 1 share minimum, an effective ${(buyResult.effectiveFeeRate * 100).toFixed(
+                      1,
+                    )}% on this size.`
+                  : "The 2% fee"}{" "}
+                was assessed by Hedera itself and routed to {buyResult.assessedCustomFees[0].collectorAccountId} — the
+                app never moves it.
               </p>
             ) : (
               <p className="mt-2 text-xs text-emerald-600">No fee (treasury exemption — expected behavior).</p>
