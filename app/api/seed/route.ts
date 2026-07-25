@@ -100,7 +100,7 @@ export const POST = handler(async (request) => {
   await grantKycIfNeeded(tokenId, buyer2.accountId.toString())
   // nokyc is intentionally left without a KYC grant.
 
-  const replenished = await replenishSecondaryScene(tokenId, buyer1, buyer2)
+  const rebalanced = await rebalanceShares(tokenId, buyer1, buyer2)
 
   // Prepare every OTHER tokenized property too, not just the seed one.
   //
@@ -127,65 +127,71 @@ export const POST = handler(async (request) => {
     seeded: true,
     properties: ['PROP-001', 'PROP-003'],
     tokenId,
-    replenished,
+    rebalanced,
     preparedTokens: repaired,
     elapsedMs: Date.now() - startedAt,
   })
 })
 
+/** Shares the treasury needs on hand to keep serving primary transfers. */
+const TREASURY_FLOAT_SHARES = 300
+
 /**
- * Restores buyer1's shares for the secondary-market fee scene, recycling rather than
- * draining.
+ * Rebalances the three demo accounts so every scene can run again.
  *
- * The arithmetic that makes this necessary: each rehearsal moves 100 shares from buyer1 to
- * buyer2 permanently, and the 2% inclusive fee returns only 2 to the treasury. Topping up
- * exclusively from the treasury therefore costs it 98 per run — measured at 508 remaining,
- * that is five rehearsals before `/api/seed` itself starts failing.
+ * Supply is fixed at 1000 and nothing is ever destroyed, so this is not topping up — it is
+ * moving the same shares back to where the scenes expect them. Two sinks drain in opposite
+ * directions and neither refills itself:
  *
- * Meanwhile every one of those transfers has been piling up in buyer2, which holds 392
- * idle shares. Sweeping them back first makes the loop closed: shares circulate between
- * the two buyers instead of leaking out of the treasury one rehearsal at a time.
+ *   - the fee scene moves 100 from buyer1 to buyer2 on every run;
+ *   - the primary sale moves shares out of the treasury, and only the 2% fee comes back.
  *
- * Both legs are attempted in order and failures are surfaced rather than swallowed, but
- * the property registration above has already happened, so a shortfall degrades to "the
- * fee scene needs a top-up" instead of "the property does not exist".
+ * Measured after a day of rehearsals: treasury 16, buyer1 213, buyer2 771. The earlier
+ * version of this function only refilled buyer1, so the fee scene kept working while
+ * primary sales quietly ran out of inventory — which is what INSUFFICIENT_TOKEN_BALANCE
+ * turned out to mean when it appeared mid-rehearsal.
+ *
+ * buyer2 is the reservoir both sinks drain into, so both are refilled from there. It is
+ * also the only source that does not cost the demo anything: buyer2 holds shares purely as
+ * the counterparty of a scene that has already been shown.
  */
-async function replenishSecondaryScene(
+async function rebalanceShares(
   tokenId: string,
   buyer1: ReturnType<typeof getDemoAccount>,
   buyer2: ReturnType<typeof getDemoAccount>,
-): Promise<{ needed: number; fromBuyer2: number; fromTreasury: number }> {
-  const held = await tokenBalance(tokenId, buyer1.accountId)
-  const needed = Math.max(0, SECONDARY_SCENE_SHARES - held)
-  if (needed === 0) return { needed: 0, fromBuyer2: 0, fromTreasury: 0 }
+): Promise<{ toBuyer1: number; toTreasury: number }> {
+  const operator = getOperator()
+  const result = { toBuyer1: 0, toTreasury: 0 }
 
-  let remaining = needed
-  let fromBuyer2 = 0
-
-  // Recycle first. This transfer is itself fee-bearing (neither side is the treasury), so
-  // ask for slightly more than we need and let the fee come out of the surplus.
-  const buyer2Held = await tokenBalance(tokenId, buyer2.accountId)
-  const recyclable = Math.min(buyer2Held, remaining + 5)
-  if (recyclable > 0) {
+  const moveFromBuyer2 = async (to: typeof buyer1.accountId, shortfall: number) => {
+    if (shortfall <= 0) return 0
+    const available = await tokenBalance(tokenId, buyer2.accountId)
+    // A buyer2 → anyone transfer is itself fee-bearing (neither side is the treasury), so
+    // ask for a little more than the shortfall and let the 2% come out of the surplus.
+    const amount = Math.min(available, shortfall + 5)
+    if (amount <= 0) return 0
     try {
-      await transferShares({ tokenId, from: buyer2, to: buyer1.accountId, amount: recyclable })
-      fromBuyer2 = recyclable
-      remaining = Math.max(0, SECONDARY_SCENE_SHARES - (await tokenBalance(tokenId, buyer1.accountId)))
+      await transferShares({ tokenId, from: buyer2, to, amount })
+      return amount
     } catch (error) {
       console.warn(
-        '[seed] Could not recycle shares from buyer2, falling back to the treasury:',
+        '[seed] Could not recycle shares from buyer2:',
         error instanceof Error ? error.message : error,
       )
+      return 0
     }
   }
 
-  let fromTreasury = 0
-  if (remaining > 0) {
-    await transferShares({ tokenId, from: getOperator(), to: buyer1.accountId, amount: remaining })
-    fromTreasury = remaining
-  }
+  // The fee scene first: it is the one that fails most visibly, mid-narration.
+  const buyer1Held = await tokenBalance(tokenId, buyer1.accountId)
+  result.toBuyer1 = await moveFromBuyer2(buyer1.accountId, SECONDARY_SCENE_SHARES - buyer1Held)
 
-  return { needed, fromBuyer2, fromTreasury }
+  // Then the treasury, so primary sales have inventory. Without this the demo works right
+  // up until someone buys, which is the worst place to discover it.
+  const treasuryHeld = await tokenBalance(tokenId, operator.accountId)
+  result.toTreasury = await moveFromBuyer2(operator.accountId, TREASURY_FLOAT_SHARES - treasuryHeld)
+
+  return result
 }
 
 /**

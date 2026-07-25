@@ -14,19 +14,32 @@ a two-minute fix becomes a five-minute one.
 export SECRET=$(grep '^DEMO_ADMIN_SECRET=' .env.local | cut -d= -f2)
 
 npm run dev              # server on :3000
-curl -s -X POST localhost:3000/api/seed -H "x-demo-admin-secret: $SECRET"
+npm run stage            # clear, seed, rebalance shares, warm every slow path
 npm run preflight        # must end with "All green. Go."
 ```
 
-`preflight` runs last on purpose: it checks that the server is up and the store is
-populated, so running it before the seed reports a failure you were about to fix anyway.
+`npm run stage` exists because three separate things go wrong between rehearsals and they
+all have the same fix:
+
+- **Test properties pile up in the verifier queue.** A judge should see one card to review,
+  not debris from a curl session. `stage` resets first, so the queue starts empty.
+- **Shares drift out of position.** The fee scene drains buyer1; the primary sale drains the
+  treasury. Both refill from buyer2, but only when seed runs. Measured mid-rehearsal:
+  treasury down to 16 of 1000, which surfaces as `INSUFFICIENT_TOKEN_BALANCE` on the buy
+  step — the worst possible moment to discover it.
+- **The first request of the day is slow.** Cold Hedera client, unresolved ENS name,
+  unqueried Mirror: first seed took **67s**, every later one **8s**. `stage` pays that cost
+  before anyone is watching.
+
+`preflight` runs after, not before: it checks the server is up and the store is populated,
+so running it first just reports what `stage` was about to fix.
 
 If preflight reports a failure, its message names the fix. The three usual ones:
 
 | Preflight says | Fix |
 |---|---|
 | `token drift` on prop-001 | `npm run ens:write` (golden re-minted the seed token) |
-| `buyer1 shares low` | `POST /api/seed` |
+| `buyer1 shares low` | `npm run stage` |
 | `no mode record` on any prop | ENSv2 alpha reset state → `npm run ens:write` |
 
 ---
@@ -118,10 +131,21 @@ and carry on; the whole cycle takes under a minute.
 > hackathon.
 
 ### 5. A transfer fails with INSUFFICIENT_TOKEN_BALANCE
-buyer1 ran out of shares (each rehearsal moves 100 to buyer2 permanently).
+
+Someone ran out of shares. Which someone depends on the scene, and both drain into buyer2:
+
+- **Secondary (fee) scene** — buyer1 is empty. Each run moves 100 to buyer2.
+- **Primary sale** — the treasury is empty. Each sale moves shares out and only the 2% fee
+  comes back. Observed at 16 of 1000 after a day of rehearsals.
+
+One fix for both:
+
 ```bash
-curl -s -X POST localhost:3000/api/seed -H "x-demo-admin-secret: $SECRET"
+npm run stage    # or: curl -s -X POST localhost:3000/api/seed -H "x-demo-admin-secret: $SECRET"
 ```
+
+Nothing is ever lost — supply is fixed at 1000 and seed moves the same shares back into
+position from buyer2, which is where they all accumulate.
 
 ### 6. Tunnel died (only relevant while Akif tests remotely)
 ```bash
