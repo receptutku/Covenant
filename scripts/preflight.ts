@@ -187,9 +187,25 @@ async function checkHedera() {
     const operatorBalance = (await getHbarBalance(client, operator.accountId))
       .toBigNumber()
       .toNumber()
-    if (operatorBalance >= 50) pass('operator balance', `${operatorBalance.toFixed(0)} ℏ`)
-    else if (operatorBalance >= 10) warn('operator balance low', `${operatorBalance.toFixed(1)} ℏ`)
-    else fail('operator balance', `${operatorBalance.toFixed(1)} ℏ — refill before the demo`)
+    // The floor is 30 ℏ, not "some HBAR", and it is not about what a token costs.
+    // TokenCreateTransaction declares a 30 ℏ maxTransactionFee (SDK default, verified in
+    // TokenCreateTransaction.cjs), so Hedera refuses the mint with INSUFFICIENT_PAYER_BALANCE
+    // whenever the balance is below that — even though the transaction actually costs about
+    // 1 ℏ. This check previously passed at 50, warned at 10, and failed below that, which put
+    // the entire 10–30 band inside "warning": a demo that reports All green and then cannot
+    // tokenize. That happened — three POST /api/tokenize returned 500 at 23 ℏ.
+    if (operatorBalance >= 100) pass('operator balance', `${operatorBalance.toFixed(0)} ℏ`)
+    else if (operatorBalance >= 40)
+      warn(
+        'operator balance is thin',
+        `${operatorBalance.toFixed(1)} ℏ — enough to mint once, not enough for a rehearsal and the demo`,
+      )
+    else
+      fail(
+        'operator cannot mint',
+        `${operatorBalance.toFixed(1)} ℏ — TokenCreateTransaction declares a 30 ℏ max fee, so ` +
+          '/api/tokenize will fail with INSUFFICIENT_PAYER_BALANCE. Refill at portal.hedera.com.',
+      )
 
     // The tenant must cover the ADVERTISED deposit, not an arbitrary floor — and twice
     // over, because engaging a second listing before settling the first locks two
