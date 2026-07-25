@@ -332,7 +332,7 @@ export function BuyerView() {
 
       <ActionCard
         title="3. Identity Check → KYC"
-        description="World Identity confirms 18+/jurisdiction; a TokenGrantKycTransaction fires server-side."
+        description="World Identity confirms a unique human over 18; a TokenGrantKycTransaction fires server-side."
         disabledReason={!ens ? "Read the ENS config first." : buyerKey === "nokyc" ? "nokyc is deliberately never granted KYC (golden scene)." : undefined}
         active={step === 2}
       >

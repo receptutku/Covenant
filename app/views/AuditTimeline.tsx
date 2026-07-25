@@ -70,8 +70,12 @@ export function AuditTimeline() {
     setBusy(true);
     setError(null);
     try {
-      // An empty id asks for the whole protocol trail — sale and rental events
-      // interleaved on one record, which is what "one core, two modes" looks like.
+      // An empty id asks for every property at once — sale and rental events interleaved on
+      // one record, which is what "one core, two modes" looks like.
+      //
+      // Not the WHOLE trail, though the label used to say so: /api/audit walks Mirror in
+      // pages of 100 and stops at the first, so this is the newest 100 of a topic that is
+      // past 400. The count in the badge is what came back, not what exists.
       const res = await api.readAudit(propertyId.trim());
       setAudit(res);
     } catch (e) {
@@ -106,7 +110,7 @@ export function AuditTimeline() {
         >
           {busy ? "Reading Mirror Node..." : "Read the audit trail"}
         </button>
-        <span className="text-xs text-[var(--muted)]">Leave the field empty for the whole protocol trail.</span>
+        <span className="text-xs text-[var(--muted)]">Leave the field empty for the newest 100 events across all properties.</span>
       </div>
 
       {audit && (

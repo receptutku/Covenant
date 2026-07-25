@@ -31,7 +31,8 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
   const [error, setError] = useState<ApiRequestError | Error | null>(null);
   const [reason, setReason] = useState("");
   const [lastAttestation, setLastAttestation] = useState<Attestation | null>(null);
-  const [tamperResult, setTamperResult] = useState<"idle" | "blocked" | "unexpected">("idle");
+  const [tamperResult, setTamperResult] = useState<"idle" | "blocked" | "unexpected" | "inconclusive">("idle");
+  const [tamperCode, setTamperCode] = useState<string | null>(null);
   // Keyed by propertyId. One shared object meant ticking the four boxes for one property
   // enabled Approve for every other item in the queue, and the ticks survived the decision —
   // which empties the four checkboxes of the only thing they are there to assert: that a
@@ -88,12 +89,20 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
     if (!lastAttestation) return;
     setBusy("tamper");
     setTamperResult("idle");
+    setTamperCode(null);
     try {
       const tampered: Attestation = { ...lastAttestation, documentRoot: lastAttestation.documentRoot + "00" };
       await api.tokenize({ propertyId: tampered.propertyId, attestation: tampered });
       setTamperResult("unexpected"); // unexpected — tokenize should NOT have accepted this
-    } catch {
-      setTamperResult("blocked"); // expected: rejected with ATTESTATION_INVALID
+    } catch (e) {
+      // Only ATTESTATION_INVALID proves anything here. A bare catch reported EVERY failure as
+      // a pass — including ALREADY_TOKENIZED, which is what you get by running this twice on
+      // the same property, and which means the signature check was never reached. Claiming
+      // "the tampered attestation was rejected" on the strength of a different error is
+      // claiming evidence we do not have, in the one scene whose entire point is evidence.
+      const code = e instanceof ApiRequestError ? e.code : "UNKNOWN";
+      setTamperCode(code);
+      setTamperResult(code === "ATTESTATION_INVALID" ? "blocked" : "inconclusive");
     } finally {
       setBusy(null);
     }
@@ -207,6 +216,12 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
             {tamperResult === "blocked" && (
               <p className="mt-2 text-sm text-[var(--success)]">
                 ✅ Expected result: the tampered attestation was rejected on tokenize (ATTESTATION_INVALID).
+              </p>
+            )}
+            {tamperResult === "inconclusive" && (
+              <p className="mt-2 text-sm text-[var(--warning)]">
+                ⚠ Inconclusive: tokenize failed with {tamperCode}, not ATTESTATION_INVALID — the
+                signature was never checked. Re-run on a property that has not been tokenized yet.
               </p>
             )}
             {tamperResult === "unexpected" && (
