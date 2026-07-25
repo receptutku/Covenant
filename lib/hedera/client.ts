@@ -62,6 +62,21 @@ export function getDemoAccount(name: 'BUYER1' | 'BUYER2' | 'NOKYC'): HederaAccou
   return { accountId: AccountId.fromString(id.trim()), privateKey: parseKey(key) }
 }
 
+/**
+ * Resolves an account id to a demo key pair, or null if we do not hold its key.
+ *
+ * This is the boundary of what the escrow can actually move. Any flow that debits an
+ * account must go through here: if we cannot sign for it, we cannot take funds from it,
+ * and a refund destination we never debited is a fund-drain path rather than a refund.
+ */
+export function demoAccountFor(accountId: string): HederaAccount | null {
+  const wanted = accountId.trim()
+  for (const name of ['BUYER1', 'BUYER2', 'NOKYC'] as const) {
+    if (process.env[`${name}_ID`]?.trim() === wanted) return getDemoAccount(name)
+  }
+  return null
+}
+
 const CLIENT_KEY = Symbol.for('pprev.hedera.client.v1')
 
 /**

@@ -1,5 +1,6 @@
 import { ApiError } from '@/lib/errors'
 import { handler, jsonResponse, parseBody } from '@/lib/api'
+import { demoAccountFor } from '@/lib/hedera/client'
 import { transferHbar } from '@/lib/hedera/hbar'
 import { submitEventSafe } from '@/lib/hedera/topic'
 import {
@@ -45,7 +46,24 @@ export const POST = handler(async (request) => {
       )
     }
 
-    const tenant = tenantAccount()
+    // The account we debit MUST be the account recorded on the listing, because that is
+    // the account settle/expire will later refund. Before this, engage always debited a
+    // hard-coded tenant while the refund went to a caller-supplied `tenantAccountId` —
+    // so an applicant could name their own account, have someone else's balance charged,
+    // and collect the refund. Resolving the debit from the recorded tenant makes the two
+    // sides symmetric by construction rather than by convention.
+    const recordedTenant = rental.tenantAccountId ?? tenantAccount().accountId.toString()
+    const tenant = demoAccountFor(recordedTenant)
+
+    if (!tenant) {
+      // We hold no key for this account, so we cannot debit it — and refunding an account
+      // we never debited would move funds out of the escrow for free.
+      throw new ApiError(
+        'NOT_LANDLORD',
+        'The escrow cannot debit this tenant account; the deposit must come from a known demo account.',
+      )
+    }
+
     const escrow = escrowAccount()
 
     const transfer = await transferHbar({
@@ -62,7 +80,8 @@ export const POST = handler(async (request) => {
       ...rental,
       state: 'ENGAGED',
       deposit: rental.reqDeposit,
-      tenantAccountId: rental.tenantAccountId ?? tenant.accountId.toString(),
+      // Pinned to the account actually debited — this is what settle/expire refund.
+      tenantAccountId: tenant.accountId.toString(),
       lockExpiresAt,
       engageTxId: transfer.transactionId,
     })

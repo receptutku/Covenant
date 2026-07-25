@@ -45,30 +45,14 @@ export const POST = handler(async () => {
   const buyer2 = getDemoAccount('BUYER2')
   const nokyc = getDemoAccount('NOKYC')
 
-  // All three calls are idempotent, so re-seeding between rehearsals is safe.
-  await associateToken(tokenId, buyer1)
-  await associateToken(tokenId, buyer2)
-  await associateToken(tokenId, nokyc)
-
-  await grantKycIfNeeded(tokenId, buyer1.accountId.toString())
-  await grantKycIfNeeded(tokenId, buyer2.accountId.toString())
-  // nokyc is intentionally left without a KYC grant.
-
-  // Top buyer1 back up so the secondary-market fee scene works on every rehearsal.
-  // Each run moves shares from buyer1 to buyer2 permanently, so without this the second
-  // run of the demo dies with INSUFFICIENT_TOKEN_BALANCE — on stage, mid-sentence.
-  const buyer1Shares = await tokenBalance(tokenId, buyer1.accountId)
-  if (buyer1Shares < SECONDARY_SCENE_SHARES) {
-    await transferShares({
-      tokenId,
-      from: getOperator(),
-      to: buyer1.accountId,
-      amount: SECONDARY_SCENE_SHARES - buyer1Shares,
-    })
-  }
-
   const now = new Date().toISOString()
-  const seeded: Property = {
+
+  // Register the properties BEFORE touching the chain. The share top-up below can fail
+  // (it did, once the treasury ran low), and if registration came afterwards a failed
+  // top-up left PROP-001 absent entirely — turning a recoverable "not enough shares" into
+  // PROPERTY_NOT_FOUND for both pre-seeded scenes, with the runbook's remedy being the
+  // very call that failed.
+  putProperty({
     propertyId: 'PROP-001',
     displayName: 'Alfama Seed',
     city: 'Lisbon',
@@ -83,16 +67,103 @@ export const POST = handler(async () => {
     files: [],
     commitments: [],
     tokenId,
-  }
-  putProperty(seeded)
+  })
+
+  // PROP-003 is the rental property: APPROVED but deliberately never tokenized, because
+  // renting an asset whose shares are already sold would create two claims on it. Seeding
+  // it removes an undocumented ordering dependency — previously the rental scene only
+  // worked if someone had manually run attest + verifier-approve first, so after any
+  // restart it died with PROPERTY_NOT_FOUND.
+  putProperty({
+    propertyId: 'PROP-003',
+    displayName: 'Graca Rental',
+    city: 'Lisbon',
+    sellerAccountId: process.env.OPERATOR_ID!.trim(),
+    tokenSymbol: 'GRCA',
+    state: 'APPROVED',
+    createdAt: now,
+    submittedAt: now,
+    decidedAt: now,
+    documentRoot: undefined,
+    documentCount: 0,
+    files: [],
+    commitments: [],
+  })
+
+  // All three calls are idempotent, so re-seeding between rehearsals is safe.
+  await associateToken(tokenId, buyer1)
+  await associateToken(tokenId, buyer2)
+  await associateToken(tokenId, nokyc)
+
+  await grantKycIfNeeded(tokenId, buyer1.accountId.toString())
+  await grantKycIfNeeded(tokenId, buyer2.accountId.toString())
+  // nokyc is intentionally left without a KYC grant.
+
+  const replenished = await replenishSecondaryScene(tokenId, buyer1, buyer2)
 
   return jsonResponse({
     seeded: true,
-    properties: ['PROP-001'],
+    properties: ['PROP-001', 'PROP-003'],
     tokenId,
+    replenished,
     elapsedMs: Date.now() - startedAt,
   })
 })
+
+/**
+ * Restores buyer1's shares for the secondary-market fee scene, recycling rather than
+ * draining.
+ *
+ * The arithmetic that makes this necessary: each rehearsal moves 100 shares from buyer1 to
+ * buyer2 permanently, and the 2% inclusive fee returns only 2 to the treasury. Topping up
+ * exclusively from the treasury therefore costs it 98 per run — measured at 508 remaining,
+ * that is five rehearsals before `/api/seed` itself starts failing.
+ *
+ * Meanwhile every one of those transfers has been piling up in buyer2, which holds 392
+ * idle shares. Sweeping them back first makes the loop closed: shares circulate between
+ * the two buyers instead of leaking out of the treasury one rehearsal at a time.
+ *
+ * Both legs are attempted in order and failures are surfaced rather than swallowed, but
+ * the property registration above has already happened, so a shortfall degrades to "the
+ * fee scene needs a top-up" instead of "the property does not exist".
+ */
+async function replenishSecondaryScene(
+  tokenId: string,
+  buyer1: ReturnType<typeof getDemoAccount>,
+  buyer2: ReturnType<typeof getDemoAccount>,
+): Promise<{ needed: number; fromBuyer2: number; fromTreasury: number }> {
+  const held = await tokenBalance(tokenId, buyer1.accountId)
+  const needed = Math.max(0, SECONDARY_SCENE_SHARES - held)
+  if (needed === 0) return { needed: 0, fromBuyer2: 0, fromTreasury: 0 }
+
+  let remaining = needed
+  let fromBuyer2 = 0
+
+  // Recycle first. This transfer is itself fee-bearing (neither side is the treasury), so
+  // ask for slightly more than we need and let the fee come out of the surplus.
+  const buyer2Held = await tokenBalance(tokenId, buyer2.accountId)
+  const recyclable = Math.min(buyer2Held, remaining + 5)
+  if (recyclable > 0) {
+    try {
+      await transferShares({ tokenId, from: buyer2, to: buyer1.accountId, amount: recyclable })
+      fromBuyer2 = recyclable
+      remaining = Math.max(0, SECONDARY_SCENE_SHARES - (await tokenBalance(tokenId, buyer1.accountId)))
+    } catch (error) {
+      console.warn(
+        '[seed] Could not recycle shares from buyer2, falling back to the treasury:',
+        error instanceof Error ? error.message : error,
+      )
+    }
+  }
+
+  let fromTreasury = 0
+  if (remaining > 0) {
+    await transferShares({ tokenId, from: getOperator(), to: buyer1.accountId, amount: remaining })
+    fromTreasury = remaining
+  }
+
+  return { needed, fromBuyer2, fromTreasury }
+}
 
 /**
  * Granting KYC twice is not an error on Hedera, but a failure here should not abort the
