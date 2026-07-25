@@ -106,10 +106,27 @@ export const ensReadSchema = z.object({
 
 // ─── Rentals ─────────────────────────────────────────────────────────────────
 
+/**
+ * HBAR amounts must land on a whole number of tinybars (8 decimal places). Hedera rejects
+ * anything finer with `Hbar in tinybars contains decimals`, which would surface as an
+ * unhandled 500 deep inside the escrow transfer rather than as a clear input error here.
+ */
+const hbarAmountSchema = z
+  .number()
+  .positive()
+  .max(10_000)
+  // Compared against the nearest tinybar with a tolerance rather than tested for an exact
+  // integer: 1.1 ℏ is a perfectly valid amount, but `1.1 * 1e8` is 110000000.00000001 in
+  // binary floating point, so a strict integer check would reject it. 0.123456789 misses
+  // the nearest tinybar by 0.9 and is correctly refused.
+  .refine((value) => Math.abs(value * 1e8 - Math.round(value * 1e8)) < 1e-3, {
+    message: 'HBAR amounts support at most 8 decimal places (1 tinybar)',
+  })
+
 export const rentalListSchema = z.object({
   sellerSessionToken: z.string().min(1).optional(),
   propertyId: propertyIdSchema,
-  reqDeposit: z.number().positive().max(10_000),
+  reqDeposit: hbarAmountSchema,
   // The 10s floor exists so the demo can show the expiration scene live; it needs a short window.
   lockWindowSeconds: z.number().int().min(10).max(86_400),
 })

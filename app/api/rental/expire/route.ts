@@ -8,6 +8,7 @@ import {
   requireRental,
   requireState,
   slashAmount,
+  toTinybarPrecision,
   tenantAccount,
 } from '@/lib/rental'
 import { rentalExpireSchema } from '@/lib/schemas'
@@ -53,7 +54,9 @@ export const POST = handler(async (request) => {
     const payout = await transferHbar({
       from: escrowAccount(),
       to: tenant,
-      amount: deposit + slashed,
+      // Re-rounded after the addition: two individually valid amounts can still sum to a
+      // value the SDK rejects (0.3 + 0.03 → 0.32999999999999996).
+      amount: toTinybarPrecision(deposit + slashed),
       memo: `PPREV escrow expiry ${rental.listingId}`,
       propertyId: rental.propertyId,
     })

@@ -93,9 +93,21 @@ export function assertLockLapsed(rental: Rental): void {
 /**
  * Only the landlord may list, engage, or settle.
  *
- * In this demo the landlord is authenticated by the same Selfie session used for seller
- * onboarding — one gate serving both modes, which is why World Selfie Check contributes to
- * the rental flow as well as the sale flow.
+ * HONEST LIMITATION — this check cannot currently fail, and pretending otherwise would be
+ * worse than saying so. Every listing is created with `landlordAccountId` set to the
+ * single operator account, and this compares against that same account, so the comparison
+ * is always true. It is structurally correct for a world with multiple landlords, but
+ * today it enforces nothing.
+ *
+ * The reason it cannot be fixed by editing this function: a seller session is an opaque
+ * token that proves *a live human completed Selfie Check*, not *which Hedera account they
+ * control*. Nothing in the system binds a session to an account. Real authorization needs
+ * that binding — the account signing a nonce that is folded into the World action context
+ * — which is the same account-binding gap acknowledged for buyer KYC. It is on the
+ * roadmap, not in this build.
+ *
+ * What genuinely gates the rental flow today: a valid Selfie session is required to list,
+ * engage, or settle, so an anonymous caller cannot drive the escrow.
  */
 export function assertIsLandlord(rental: Rental): void {
   if (rental.landlordAccountId !== landlordAccount().accountId.toString()) {
@@ -103,6 +115,24 @@ export function assertIsLandlord(rental: Rental): void {
   }
 }
 
+/** One HBAR is 100,000,000 tinybars — the smallest unit Hedera will accept. */
+const TINYBARS_PER_HBAR = 100_000_000
+
+/**
+ * Rounds an HBAR amount down to a whole number of tinybars.
+ *
+ * Without this the SDK throws `Hbar in tinybars contains decimals` and the request dies as
+ * an unhandled 500. It is not hypothetical: a 0.3 ℏ deposit gives a 0.03 ℏ slash, and
+ * `0.3 + 0.03` is `0.32999999999999996` in binary floating point. The demo uses 5 ℏ, where
+ * the arithmetic happens to be exact, so this only surfaces once someone types a value
+ * like 0.3 or 1.1 into the deposit field.
+ *
+ * Rounding DOWN is deliberate: the escrow must never try to pay out more than it holds.
+ */
+export function toTinybarPrecision(amount: number): number {
+  return Math.floor(amount * TINYBARS_PER_HBAR) / TINYBARS_PER_HBAR
+}
+
 export function slashAmount(deposit: number): number {
-  return Number(((deposit * SLASH_RATE_BPS) / 10_000).toFixed(8))
+  return toTinybarPrecision((deposit * SLASH_RATE_BPS) / 10_000)
 }
