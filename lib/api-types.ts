@@ -138,15 +138,19 @@ export interface SubmitPropertyResult {
  */
 export interface PropertyStatusResult {
   propertyId: string;
-  displayName: string;
-  city: string;
-  sellerAccountId: string;
-  tokenSymbol: string;
+  /**
+   * `null` when `restricted` — a session that did not submit this property is told its state
+   * and its token, never anything the seller wrote.
+   */
+  displayName: string | null;
+  city: string | null;
+  sellerAccountId: string | null;
+  tokenSymbol: string | null;
   state: PropertyState;
   createdAt: string;
   submittedAt: string | null;
   decidedAt: string | null;
-  /** The reviewer's full text. Never published on-chain. */
+  /** The reviewer's full text. Never published on-chain, and `null` when `restricted`. */
   rejectionReason: string | null;
   documentRoot: string | null;
   documentCount: number;
@@ -159,7 +163,14 @@ export interface PropertyStatusResult {
   attestationExpiresAt: string | null;
   tokenId: string | null;
   hashscanUrl: string | null;
+  /** Empty when `restricted`. */
   files: FileMeta[];
+  /**
+   * `true` when this session did not submit the property. `state`, `tokenId` and
+   * `hasAttestation` are still accurate — they are public on Hedera anyway — but every
+   * seller-authored field is blanked. A blanked record is not an empty one.
+   */
+  restricted: boolean;
 }
 
 // ── listPendingVerifications ────────────────────────────────────────────────

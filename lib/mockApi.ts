@@ -734,6 +734,10 @@ async function getProperty(
       ? `https://hashscan.io/testnet/token/${property.tokenId}`
       : null,
     files: property.files ?? [],
+    // The mock has no notion of which session submitted what, so nothing is ever withheld.
+    // The real server blanks every seller-authored field for a session that did not submit
+    // the property — branch on this flag rather than assuming the fields are populated.
+    restricted: false,
   };
 }
 

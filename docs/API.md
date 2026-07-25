@@ -365,12 +365,21 @@ below sequence ~190 that still carry it predate that decision and cannot be remo
 was removed, because it put a live credential into URLs, browser history and the tunnel's
 access log.
 
-> **A property belongs to the session that submitted it.** Reading one submitted by a different
-> session returns `401` / `SELLER_SESSION_REQUIRED`. Sessions were otherwise interchangeable,
-> and propertyIds are `PROP-NNN` — trivially enumerable — so any completed Selfie Check could
-> read every seller's `rejectionReason`, the one field deliberately reduced to a hash before it
-> reaches HCS. Seeded properties have no submitter and stay readable; they contain nothing a
-> seller wrote.
+> **A property belongs to the session that submitted it — and a different session gets a
+> withheld record, not an error.** `restricted: true`, with `displayName`, `city`,
+> `sellerAccountId`, `tokenSymbol` and `rejectionReason` all `null` and `files` empty. `state`,
+> `tokenId` and `hasAttestation` stay accurate; they are public on Hedera anyway.
+>
+> Why withhold rather than refuse: sessions were interchangeable and propertyIds are
+> `PROP-NNN`, trivially enumerable, so any completed Selfie Check could read every seller's
+> `rejectionReason` — the one field deliberately reduced to a hash before it reaches HCS,
+> because free text is where personal data ends up. But **a session is a browser tab, not a
+> person**: reloading the page or pressing "Reset session" mints a new token, and refusing
+> outright meant the same human could no longer read the property they had just submitted.
+> That reads as a broken app, not as a privacy control.
+>
+> Branch on `restricted` — a blanked record is not an empty one. Seeded properties have no
+> submitter and are never restricted.
 
 > **This is the endpoint the seller's "Refresh status" button should call.** Do not derive
 > state from the HCS timeline. The timeline is the record of what *happened* and is public and
@@ -397,6 +406,7 @@ access log.
   "submittedAt": "2026-07-24T10:15:00.000Z",
   "decidedAt": "2026-07-24T10:16:30.000Z",
   "rejectionReason": null,
+  "restricted": false,
   "documentRoot": "0xabc...",
   "documentCount": 2,
   "hasAttestation": true,
@@ -422,9 +432,9 @@ Metadata only. Document bytes, salts and per-file commitments never leave the se
 Drive the seller UI from `state` and `hasAttestation`: show the Tokenize button when
 `state === "APPROVED"`, and only after `state === "TOKENIZED"` show `tokenId` / `hashscanUrl`.
 
-**Errors:** `SELLER_SESSION_REQUIRED` (401 — no session, **or** the property belongs to a
-different one), `SELLER_SESSION_EXPIRED` (401), `PROPERTY_NOT_FOUND` (404), `INVALID_INPUT`
-(400 — no `propertyId`)
+**Errors:** `SELLER_SESSION_REQUIRED` (401 — no session), `SELLER_SESSION_EXPIRED` (401),
+`PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400 — no `propertyId`). A session that did not
+submit the property is **not** an error here; it gets `restricted: true`.
 
 **HCS:** none — this endpoint only reads.
 

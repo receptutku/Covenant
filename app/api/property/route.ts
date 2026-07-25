@@ -48,31 +48,40 @@ export const GET = handler(async (request) => {
 
   const property = requireProperty(propertyId)
 
-  // Bound to the session that submitted it. Sessions are otherwise interchangeable, so any
-  // Selfie Check could read any property — and propertyIds are `PROP-NNN`, trivially
-  // enumerable. What that exposed is `rejectionReason`: the reviewer's full free text, which
-  // is the one field deliberately reduced to a hash before it reaches HCS, precisely because
-  // free text is where personal data ends up. Seeded properties carry no owner and stay
-  // readable; they contain nothing a seller wrote.
-  if (property.ownerSessionToken && property.ownerSessionToken !== session.token) {
-    throw new ApiError(
-      'SELLER_SESSION_REQUIRED',
-      'This property belongs to a different session.',
-    )
-  }
+  // Withhold, do not refuse.
+  //
+  // Sessions are interchangeable, so any Selfie Check could read any property — and
+  // propertyIds are `PROP-NNN`, trivially enumerable. What that exposed is everything the
+  // seller wrote: above all `rejectionReason`, the reviewer's full free text, which is the one
+  // field deliberately reduced to a hash before it reaches HCS precisely because free text is
+  // where personal data ends up.
+  //
+  // Refusing the whole read was the first fix and it was too blunt. A session is a browser
+  // tab, not a person: reloading the page or pressing "Reset session" mints a new token, and
+  // the same human then could not read the property they had just submitted — which reads as
+  // a broken app rather than as a privacy control. So a stranger still learns nothing a seller
+  // authored; they only learn a state and a token id, both of which are already public on
+  // Hedera. Overwriting through /api/attest stays a hard refusal, because that is destructive.
+  //
+  // Seeded properties carry no owner and are unrestricted; they contain nothing a seller wrote.
+  const restricted = Boolean(
+    property.ownerSessionToken && property.ownerSessionToken !== session.token,
+  )
 
   return jsonResponse({
     propertyId: property.propertyId,
-    displayName: property.displayName,
-    city: property.city,
-    sellerAccountId: property.sellerAccountId,
-    tokenSymbol: property.tokenSymbol,
+    // Everything the seller authored is withheld from a session that did not submit it.
+    displayName: restricted ? null : property.displayName,
+    city: restricted ? null : property.city,
+    sellerAccountId: restricted ? null : property.sellerAccountId,
+    tokenSymbol: restricted ? null : property.tokenSymbol,
     state: property.state,
     createdAt: property.createdAt,
     submittedAt: property.submittedAt ?? null,
     decidedAt: property.decidedAt ?? null,
     // The full text, for the seller who needs to know what to fix. Never on-chain.
-    rejectionReason: property.rejectionReason ?? null,
+    // The reviewer's free text. Never on-chain, and never to anyone but the submitter.
+    rejectionReason: restricted ? null : (property.rejectionReason ?? null),
     documentRoot: property.documentRoot ?? null,
     documentCount: property.documentCount,
     // Whether an approval exists — NOT the approval itself. The attestation is a mint
@@ -82,10 +91,15 @@ export const GET = handler(async (request) => {
     attestationExpiresAt: property.attestation?.expiresAt ?? null,
     tokenId: property.tokenId ?? null,
     hashscanUrl: property.tokenId ? hashscanUrl('token', property.tokenId) : null,
-    files: property.files.map((file) => ({
-      name: file.name,
-      type: file.type,
-      sizeBytes: file.sizeBytes,
-    })),
+    files: restricted
+      ? []
+      : property.files.map((file) => ({
+          name: file.name,
+          type: file.type,
+          sizeBytes: file.sizeBytes,
+        })),
+    // Says outright that fields were withheld, so a client cannot mistake a blanked record
+    // for an empty one.
+    restricted,
   })
 })
