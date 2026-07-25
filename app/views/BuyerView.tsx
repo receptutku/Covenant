@@ -222,7 +222,7 @@ export function BuyerView() {
       <ActionCard
         title="0. Pick a property"
         description="Golden scenes run on PROP-001; type any live property id."
-        techNote="Nothing below renders until this resolves — the client refuses to act on configuration it has not read from a neutral source."
+        techNote="Discovery is live; settlement is not. The client resolves each property's config from ENS before it renders, but transfers still read the token from the server's own record."
       >
         <div className="flex flex-wrap items-center gap-2">
           {/*

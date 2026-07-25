@@ -86,7 +86,31 @@ curl'leyip bizim sunucumuzdan geçmeden aynı listeye ulaşabilirsiniz.
 
 ---
 
-## 2.5 "Neden bu ağı kullandınız?" — sunumda söylenecek
+## 2.4 Üç ağ, üç cümle — ezberlenecek kısa hâl
+
+Recep'in yazdığı, doğrulanabilir kısa versiyonlar. Sunumda **kelimesi kelimesine** bunları
+söyle; uzun gerekçeler bir sonraki bölümde, sadece soru gelirse aç.
+
+> **Hedera — The asset and the rule.** An HTS token with a KYC key: a transfer to an
+> unverified account is refused by consensus, not by our code. HCS carries the audit trail.
+
+> **World ID — The person.** Proves a unique human over 18. We receive a nullifier, never an
+> identity.
+
+> **ENS — Each property's ENS record carries the protocol config the client resolves before
+> the flow renders.**
+
+⚠️ **ENS cümlesi için:** Recep ENS'i bağlayıcı hâle getirme işini bitirdiğinde haber verecek.
+Ancak o zaman şununla değiştir:
+
+> **Shares don't move unless ENS and our server agree on which token the property uses.**
+
+Bunu erken söyleme. Şu anda ENS kayıtlarını silsen hiçbir şey bozulmuyor — doğru olmayan bir
+iddiayı en görünür yere koymuş oluruz ve jürinin ilk sorusu tam o olur.
+
+---
+
+## 2.5 "Neden bu ağı kullandınız?" — uzun gerekçeler, soru gelirse
 
 ETHGlobal mentörü bunun altını özellikle çizdi: her entegrasyonun **hangi ihtiyaca** cevap
 verdiğini açıkça söylememizi bekliyorlar. Ekranda yazmıyor, **sen söyleyeceksin.**
