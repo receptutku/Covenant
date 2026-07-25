@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { ApiError } from '@/lib/errors'
 import { handler, jsonResponse, parseBody, requireAdminSecret } from '@/lib/api'
 import { submitEventSafe } from '@/lib/hedera/topic'
@@ -46,8 +47,20 @@ export const POST = handler(async (request) => {
 
     await submitEventSafe(HCS_EVENTS.OWNERSHIP_REJECTED, property.propertyId, {
       decidedAt,
-      // The reason is operational text written by the reviewer, never personal data.
-      reason,
+      // Only a digest of the reason goes on-chain. The reason is free text typed by a
+      // human reviewer, and the natural way to justify a rejection is to quote the
+      // document being rejected — "deed lists DOB 1984-03-02, holder Ana R." — which is
+      // exactly the personal data this topic promises never to carry.
+      // `assertNoSensitiveKeys` cannot catch it: it inspects key names, not values. A
+      // topic message is public and permanent, so there is no taking one sentence back.
+      //
+      // The digest still does the job an auditor needs: given the reason text (returned
+      // below and kept on the property record for the seller's UI) anyone can recompute
+      // this hash and prove the stored reason is the one decided at this consensus
+      // timestamp. It is a commitment, not a secret — the reason is disclosed to the
+      // seller anyway; what changes is that it is no longer broadcast to everyone.
+      reasonLength: reason.length,
+      reasonHash: createHash('sha256').update(reason, 'utf8').digest('hex'),
     })
 
     return jsonResponse({ propertyId: property.propertyId, state: 'REJECTED', reason })

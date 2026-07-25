@@ -1,7 +1,7 @@
 import { handler, jsonResponse, parseBody } from '@/lib/api'
 import { ApiError } from '@/lib/errors'
-import { getDemoAccount, getOperator } from '@/lib/hedera/client'
-import { transferShares } from '@/lib/hedera/token'
+import { demoAccountFor, getDemoAccount, getOperator } from '@/lib/hedera/client'
+import { associateToken, transferShares } from '@/lib/hedera/token'
 import { submitEventSafe } from '@/lib/hedera/topic'
 import { requireProperty } from '@/lib/property'
 import { buySchema } from '@/lib/schemas'
@@ -41,6 +41,16 @@ export const POST = handler(async (request) => {
     }
 
     const { from, to } = resolveParties(body.mode, body.buyerAccountId)
+
+    // Just-in-time repair. Tokenize prepares demo accounts in the background, but that
+    // takes several Hedera round trips and someone clicking straight through would arrive
+    // here first — landing on TOKEN_NOT_ASSOCIATED_TO_ACCOUNT, which for the no-KYC scene
+    // tells exactly the wrong story. Association is idempotent and only attempted for
+    // accounts we hold keys for; KYC is never granted here, so the gate stays intact.
+    const recipient = demoAccountFor(to)
+    if (recipient) {
+      await associateToken(property.tokenId, recipient)
+    }
 
     const result = await transferShares({
       tokenId: property.tokenId,

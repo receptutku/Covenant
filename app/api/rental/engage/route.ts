@@ -72,6 +72,7 @@ export const POST = handler(async (request) => {
       amount: rental.reqDeposit,
       memo: `PPREV escrow lock ${rental.listingId}`,
       propertyId: rental.propertyId,
+      context: 'deposit-lock',
     })
 
     const lockExpiresAt = new Date(Date.now() + rental.lockWindowSeconds * 1000).toISOString()

@@ -52,6 +52,7 @@ export const POST = handler(async (request) => {
       amount: deposit,
       memo: `PPREV escrow release ${rental.listingId}`,
       propertyId: rental.propertyId,
+      context: 'escrow-release',
     })
 
     putRental({ ...rental, state: 'SETTLED', slashed: 0, settleTxId: refund.transactionId })

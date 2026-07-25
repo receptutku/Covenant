@@ -44,6 +44,7 @@ type MirrorTopicMessage = {
   consensus_timestamp: string
   sequence_number: number
   message: string
+  payer_account_id?: string
 }
 
 export type AuditEvent = {
@@ -84,6 +85,7 @@ export async function readAuditTrail(
   // on-chain — it simply fell outside the window. So we keep paging until we have enough
   // matches rather than filtering whatever one page happened to contain.
   const events: AuditEvent[] = []
+  const expectedPayer = process.env.OPERATOR_ID?.trim()
   // 0 means "no cursor yet"; Mirror sequence numbers start at 1.
   let before = 0
 
@@ -107,6 +109,17 @@ export async function readAuditTrail(
       }
       if (!envelope?.eventType) continue
       if (propertyId && envelope.propertyId !== propertyId) continue
+
+      // The topic has no submit key, so ANYONE can publish to it — that is what makes the
+      // trail publicly auditable, but it also means a stranger could post a well-formed
+      // {"eventType":"RENTAL_SETTLED",...} that renders identically to a real event. A
+      // timeline claiming to be "verifiable fact, not an application claim" must not show
+      // a settlement that never happened, so we only surface messages paid for by the
+      // protocol operator. The messages are still public; anyone can apply the same filter
+      // and reach the same list, which is the property that matters.
+      if (expectedPayer && message.payer_account_id && message.payer_account_id !== expectedPayer) {
+        continue
+      }
 
       events.push({
         eventType: envelope.eventType,

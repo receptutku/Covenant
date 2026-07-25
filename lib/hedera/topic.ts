@@ -29,7 +29,17 @@ function assertNoSensitiveKeys(payload: Record<string, unknown>, path = 'payload
         `HCS payload contains a sensitive field: ${path}.${key} — it cannot be written on-chain.`,
       )
     }
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
+    // Arrays used to be skipped outright, which left the guard blind to the shape it is
+    // most likely to meet as payloads grow: `{items: [{nullifier: "..."}]}` would have
+    // been published untouched. The index stays in the path so the failure points at the
+    // element that has to be fixed.
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => {
+        if (item && typeof item === 'object') {
+          assertNoSensitiveKeys(item as Record<string, unknown>, `${path}.${key}[${index}]`)
+        }
+      })
+    } else if (value && typeof value === 'object') {
       assertNoSensitiveKeys(value as Record<string, unknown>, `${path}.${key}`)
     }
   }

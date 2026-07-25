@@ -45,16 +45,33 @@ export function requireRental(listingId: string): Rental {
 /**
  * Guards a state transition and reports the specific reason it failed.
  *
- * Each rejection carries its own stable code because the UI shows a different next step
- * for each: a listing that was never engaged needs a tenant, an expired lock needs the
- * expire path, and a still-running lock needs the settle path.
+ * Every rejection carries the same code, because the code list is closed — which leaves
+ * the message as the only thing that can tell these situations apart, and they call for
+ * opposite responses. LISTED and APPLIED are waiting on something, so naming what is
+ * missing is actionable. SETTLED and EXPIRED are terminal: the escrow is already emptied
+ * and there is no path forward at all, so telling someone the listing "requires it to be
+ * ENGAGED" reads as an instruction to go find a tenant for a tenancy that has ended.
  */
 export function requireState(rental: Rental, expected: RentalState): void {
   if (rental.state === expected) return
 
+  if (rental.state === 'SETTLED' || rental.state === 'EXPIRED') {
+    throw new ApiError(
+      'RENTAL_NOT_ENGAGED',
+      `This listing is already ${rental.state}: the escrow was released and it is finished. No further action is possible on it.`,
+    )
+  }
+
+  const detail =
+    rental.state === 'LISTED'
+      ? 'no tenant has applied to it yet'
+      : rental.state === 'APPLIED'
+        ? 'a tenant has applied but the deposit has not been locked yet'
+        : 'its deposit is still locked in escrow'
+
   throw new ApiError(
     'RENTAL_NOT_ENGAGED',
-    `This listing is ${rental.state}; the action requires it to be ${expected}.`,
+    `This listing is ${rental.state}: ${detail}. This action requires it to be ${expected}.`,
   )
 }
 

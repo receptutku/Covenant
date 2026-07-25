@@ -46,6 +46,21 @@ export type VerifiedProof = {
   verifiedByWorld: boolean
 }
 
+/**
+ * Extracts a nullifier from an IDKit payload.
+ *
+ * Accepts the spellings IDKit has shipped across versions rather than pinning one, so an
+ * SDK bump does not silently break replay protection. Used only on the development path;
+ * the verified path takes the nullifier from World's own response.
+ */
+function readNullifier(proof: Record<string, unknown>): string | null {
+  for (const key of ['nullifier', 'nullifier_hash', 'nullifierHash']) {
+    const value = proof[key]
+    if (typeof value === 'string' && value.length > 0) return value
+  }
+  return null
+}
+
 export function isWorldConfigured(): boolean {
   return Boolean(process.env.WORLD_RP_ID?.trim() && process.env.WORLD_SIGNING_KEY?.trim())
 }
@@ -119,11 +134,28 @@ export async function verifyWorldProof(
   proof: Record<string, unknown>,
 ): Promise<VerifiedProof> {
   if (!isWorldConfigured()) {
+    // Gated on NODE_ENV as well as on configuration. Keying off configuration alone meant
+    // a production deploy that simply forgot WORLD_RP_ID would accept every proof with
+    // nothing but a console warning — an unverified build that looks verified.
+    if (process.env.NODE_ENV === 'production') {
+      throw new ApiError(
+        'WORLD_PROOF_INVALID',
+        'Identity verification is unavailable: World is not configured on this server.',
+      )
+    }
+
     console.warn(
       `[world] Not configured — "${action}" proof accepted WITHOUT verification (development only).`,
     )
+    // Derived from the nullifier when the payload carries one, so replay protection still
+    // behaves like the real thing. Hashing the whole payload was worse than useless: a
+    // caller could add one throwaway key and mint an unlimited supply of "fresh"
+    // identities, which is precisely what replay protection exists to stop.
+    const claimed = readNullifier(proof)
     return {
-      nullifier: createHash('sha256').update(JSON.stringify(proof)).digest('hex'),
+      nullifier:
+        claimed ??
+        createHash('sha256').update(`dev:${action}`).digest('hex'),
       verifiedByWorld: false,
     }
   }

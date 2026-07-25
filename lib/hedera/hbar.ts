@@ -31,11 +31,62 @@ export type HbarTransferResult = {
   amount: number
 }
 
+/** Which direction the money is going — see `insufficientFundsMessage`. */
+export type HbarTransferContext = 'deposit-lock' | 'escrow-release'
+
+/**
+ * Two accounts can starve the same transfer, and naming the wrong one sends someone to top
+ * up an account that was never short.
+ *
+ * The fee payer is always the operator, because every transaction here is executed through
+ * the operator-configured client. The debited account, by contrast, depends on the
+ * direction: the tenant when a deposit is locked, the escrow when one is released. So
+ * INSUFFICIENT_PAYER_BALANCE is an operator problem whichever way the HBAR was moving,
+ * while INSUFFICIENT_ACCOUNT_BALANCE is the sender's — and on a release nothing is being
+ * "deposited" at all, so the old wording told the tenant to fund a wallet that would not
+ * have helped.
+ *
+ * The code stays INSUFFICIENT_DEPOSIT in every case: that list is closed and documented in
+ * docs/API.md, the UI branches on the code, and the text is free to change.
+ */
+function insufficientFundsMessage(
+  status: StatusError['status'],
+  from: AccountId,
+  amount: number,
+  context?: HbarTransferContext,
+): string | null {
+  const operation =
+    context === 'deposit-lock'
+      ? 'lock this deposit'
+      : context === 'escrow-release'
+        ? 'release the escrow'
+        : 'complete this transfer'
+
+  if (status._code === Status.InsufficientPayerBalance._code) {
+    return `The operator account cannot pay the network fee to ${operation}; it needs to be topped up. Nothing was moved.`
+  }
+
+  if (status._code === Status.InsufficientAccountBalance._code) {
+    const sender =
+      context === 'deposit-lock'
+        ? `The tenant account ${from.toString()}`
+        : context === 'escrow-release'
+          ? `The escrow account ${from.toString()}`
+          : `Account ${from.toString()}`
+    return `${sender} does not hold the ${amount} HBAR needed to ${operation}.`
+  }
+
+  return null
+}
+
 /**
  * Moves HBAR between two accounts.
  *
  * The sender must sign, which is why the full key pair is required rather than an account
  * id: the escrow lock is a real debit from the tenant, not a bookkeeping entry.
+ *
+ * `context` changes nothing about the transfer; it exists only so a funding failure can
+ * name the account that actually has to be funded.
  */
 export async function transferHbar(
   params: {
@@ -44,11 +95,19 @@ export async function transferHbar(
     amount: number
     memo?: string
     propertyId?: string
+    context?: HbarTransferContext
   },
   client: Client = getClient(),
 ): Promise<HbarTransferResult> {
   const to = typeof params.to === 'string' ? AccountId.fromString(params.to) : params.to
-  const hbar = new Hbar(params.amount)
+
+  // Rounded down to a whole tinybar at the single choke point every HBAR movement passes
+  // through. Callers validate their own inputs, but validation with a tolerance still
+  // admits values like 5000.000000000001 — which construct an Hbar that throws
+  // `Hbar in tinybars contains decimals`, and because that happens before the try block it
+  // surfaced as an unhandled 500 on every retry, permanently bricking that listing.
+  // Down rather than nearest: never attempt to move more than the sender was asked for.
+  const hbar = new Hbar(Math.floor(params.amount * 100_000_000) / 100_000_000)
 
   try {
     const transaction = new TransferTransaction()
@@ -76,16 +135,18 @@ export async function transferHbar(
 
     return { transactionId, hashscanUrl: url, amount: params.amount }
   } catch (error) {
-    if (
-      error instanceof StatusError &&
-      (error.status._code === Status.InsufficientAccountBalance._code ||
-        error.status._code === Status.InsufficientPayerBalance._code)
-    ) {
-      throw new ApiError(
-        'INSUFFICIENT_DEPOSIT',
-        'The account does not hold enough HBAR to lock this deposit.',
-        { hederaStatus: error.status.toString() },
+    if (error instanceof StatusError) {
+      const message = insufficientFundsMessage(
+        error.status,
+        params.from.accountId,
+        params.amount,
+        params.context,
       )
+      if (message) {
+        throw new ApiError('INSUFFICIENT_DEPOSIT', message, {
+          hederaStatus: error.status.toString(),
+        })
+      }
     }
     throw error
   }

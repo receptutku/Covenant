@@ -59,6 +59,7 @@ export const POST = handler(async (request) => {
       amount: toTinybarPrecision(deposit + slashed),
       memo: `PPREV escrow expiry ${rental.listingId}`,
       propertyId: rental.propertyId,
+      context: 'escrow-release',
     })
 
     putRental({ ...rental, state: 'EXPIRED', slashed, settleTxId: payout.transactionId })

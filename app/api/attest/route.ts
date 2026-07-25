@@ -6,6 +6,7 @@ import { attestSchema } from '@/lib/schemas'
 import { getProperty, putProperty } from '@/lib/store'
 import { HCS_EVENTS, type Property } from '@/lib/types'
 import { requireSellerSession } from '@/lib/world/session'
+import { withLock } from '@/lib/lock'
 
 /**
  * Seller submits a property and its supporting documents for review.
@@ -21,6 +22,13 @@ export const POST = handler(async (request) => {
   const body = await parseBody(request, attestSchema)
   requireSellerSession(body.sellerSessionToken)
 
+  // Shares a key namespace with /api/tokenize, which is the point. Tokenize reads the
+  // property, spends seconds minting, then writes back its snapshot — so a resubmission
+  // landing in that gap either had its documents erased, or left the store in
+  // PENDING_REVIEW with no tokenId while a real token existed on Hedera. From there
+  // approve → tokenize runs again and mints a SECOND token: the same double-mint the lock
+  // was added to prevent, reached through a different door.
+  return withLock(`property:${body.propertyId}`, async () => {
   const existing = getProperty(body.propertyId)
 
   // A tokenized property is final. Without this guard a resubmission would flip it back
@@ -75,5 +83,6 @@ export const POST = handler(async (request) => {
     documentRoot: root,
     documentCount: files.length,
     hcs: event ? { topicId: event.topicId, sequenceNumber: event.sequenceNumber } : null,
+  })
   })
 })

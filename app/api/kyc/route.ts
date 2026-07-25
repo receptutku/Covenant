@@ -33,6 +33,22 @@ export const POST = handler(async (request) => {
     )
   }
 
+  // The nokyc account is the demo's counter-example: associated with the token but never
+  // granted KYC, so a transfer to it is refused by the network itself. Granting it KYC
+  // would destroy that scene PERMANENTLY — there is no revoke endpoint here, and the
+  // account's whole purpose is to be the one that was never verified.
+  //
+  // This is a demo guard, not a security boundary. The real gap it sits next to: a World
+  // proof does not attest to a Hedera account, so nothing binds this grant to the person
+  // who verified. Closing that needs account-binding (the account signing a nonce folded
+  // into the World action context) and is on the roadmap.
+  if (body.buyerAccountId === process.env.NOKYC_ID?.trim()) {
+    throw new ApiError(
+      'KYC_DENIED',
+      'This account is reserved as the unverified counter-example and cannot be granted KYC.',
+    )
+  }
+
   const verified = await verifyWorldProof('verify-buyer', body.proof)
   // Burn the nullifier only after verification succeeds, so a forged proof cannot lock a
   // real buyer out of ever verifying.

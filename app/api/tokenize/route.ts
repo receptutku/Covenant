@@ -8,6 +8,7 @@ import { HCS_EVENTS } from '@/lib/types'
 import { assertAttestationValid } from '@/lib/verifier/attestation'
 import { withLock } from '@/lib/lock'
 import { publishTokenIdInBackground } from '@/lib/ens/write'
+import { prepareTokenForDemoInBackground } from '@/lib/hedera/demo-setup'
 
 /**
  * The security gate between a reviewed property and an on-chain asset.
@@ -31,7 +32,7 @@ export const POST = handler(async (request) => {
   // Serialized per property: without this, two concurrent requests both saw APPROVED and
   // both minted, putting two real tokens on-chain for one property. Reproduced with a
   // parallel curl — a double-clicked button does the same.
-  return withLock(`tokenize:${body.propertyId}`, async () => {
+  return withLock(`property:${body.propertyId}`, async () => {
     const property = requireProperty(body.propertyId)
     assertTokenizable(property)
     assertAttestationValid(body.attestation, property)
@@ -50,6 +51,14 @@ export const POST = handler(async (request) => {
     // while the transfer underneath used another. Fired in the background: the mint is
     // already final, and a Sepolia hiccup must not fail a successful tokenization.
     publishTokenIdInBackground(property.propertyId, token.tokenId)
+
+    // A brand new token has no relationships yet, so every compliance scene would fail
+    // against it for the wrong reason — the no-KYC transfer in particular returned
+    // TOKEN_NOT_ASSOCIATED_TO_ACCOUNT, which reads as "this account was never set up"
+    // rather than "identity verification is enforced". Association is a precondition of
+    // the KYC gate, not a bypass: Hedera checks it first, so the gate is unreachable
+    // until it is satisfied. nokyc is associated and deliberately left ungranted.
+    prepareTokenForDemoInBackground(token.tokenId)
 
     await submitEventSafe(HCS_EVENTS.PROPERTY_TOKEN_CREATED, property.propertyId, {
       tokenId: token.tokenId,
