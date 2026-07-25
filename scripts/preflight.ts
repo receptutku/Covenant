@@ -59,6 +59,54 @@ async function checkEnv() {
   else fail('missing variables', missing.join(', '))
 }
 
+/**
+ * The server itself, and whether the demo state is actually loaded.
+ *
+ * This was missing, which made the whole command misleading: preflight verified the
+ * chain, ENS and World and reported "All green. Go." with the server not running at all —
+ * or running with an empty store after a restart, where both pre-seeded scenes answer
+ * PROPERTY_NOT_FOUND. Everything it checked was fine; the demo was still dead.
+ */
+async function checkServer() {
+  console.log('\n▶ Server')
+  const base = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
+
+  let health: {
+    ok?: boolean
+    world?: string
+    seededProperties?: number
+    demoAccounts?: Record<string, string | null>
+  }
+  try {
+    const response = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(5_000) })
+    if (!response.ok) {
+      fail('server responded', `HTTP ${response.status} from ${base} — is \`npm run dev\` running?`)
+      return
+    }
+    health = await response.json()
+  } catch {
+    fail('server unreachable', `${base} did not answer — start it with \`npm run dev\``)
+    return
+  }
+
+  pass('server reachable', base)
+
+  if (health.world === 'configured') pass('World configured on the server')
+  else warn('World in dev-fallback', 'proofs are accepted without verification')
+
+  // A restart empties the store. Everything on-chain survives, but both seeded scenes
+  // answer PROPERTY_NOT_FOUND until /api/seed runs.
+  const seeded = health.seededProperties ?? 0
+  if (seeded >= 2) pass('demo state loaded', `${seeded} properties in the store`)
+  else fail('store is empty or partial', `${seeded} properties — run POST /api/seed`)
+
+  const missing = Object.entries(health.demoAccounts ?? {})
+    .filter(([, value]) => !value)
+    .map(([name]) => name)
+  if (missing.length === 0) pass('demo account ids published for the frontend')
+  else fail('demo accounts unpublished', `${missing.join(', ')} — the UI cannot resolve them`)
+}
+
 async function checkHedera() {
   console.log('\n▶ Hedera')
   const operator = getOperator()
@@ -215,6 +263,7 @@ async function main() {
   console.log('═'.repeat(50))
 
   await checkEnv()
+  await checkServer()
   await checkHedera()
   await checkMirrorAndScenePreconditions()
   await checkEns()
