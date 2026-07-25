@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { IDKitRequestWidget, identityCheck, proofOfHuman } from "@worldcoin/idkit";
-import type { IDKitResult, IDKitErrorCodes, RpContext } from "@worldcoin/idkit-core";
+import type { IDKitResult, IDKitErrorCodes, RpContext, Preset } from "@worldcoin/idkit-core";
 import { api, ApiRequestError } from "@/lib/apiClient";
 import type { WorldAction } from "@/lib/api-types";
 
@@ -42,6 +42,20 @@ export function WorldVerifyButton({
     environment: "production" | "staging" | "sandbox";
   } | null>(null);
   const [open, setOpen] = useState(false);
+
+  /*
+   * Memoised deliberately. The widget polls World for the result of a pending
+   * request; a new preset object on every render looks like a new request and
+   * restarts that poll, so the verification the user just completed is never
+   * collected — the sheet simply does nothing on return.
+   */
+  const preset = useMemo<Preset>(
+    () =>
+      action === "onboard-seller"
+        ? proofOfHuman({ signal })
+        : identityCheck({ attributes: [{ type: "minimum_age", value: 18 }] }),
+    [action, signal],
+  );
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,11 +120,7 @@ export function WorldVerifyButton({
           // v4 proofs only. Accepting legacy proofs would mean tracking two
           // nullifier namespaces to stop the same person passing twice.
           allow_legacy_proofs={false}
-          preset={
-            action === "onboard-seller"
-              ? proofOfHuman({ signal })
-              : identityCheck({ attributes: [{ type: "minimum_age", value: 18 }] })
-          }
+          preset={preset}
           onSuccess={handleSuccess}
           onError={handleError}
         />

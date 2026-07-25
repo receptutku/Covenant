@@ -21,7 +21,7 @@ const STEPS = ["ENS", "Association", "Identity/KYC", "Buy", "Evidence"];
 const EMPTY_ACCOUNTS: Record<string, string> = { buyer1: "", buyer2: "", nokyc: "" };
 
 export function BuyerView() {
-  const [propertyId, setPropertyId] = useState("PROP-002");
+  const [propertyId, setPropertyId] = useState("PROP-001");
   const [buyerKey, setBuyerKey] = useState<"buyer1" | "buyer2" | "nokyc">("buyer1");
   const [mode, setMode] = useState<"primary" | "secondary" | "nokyc">("primary");
   const [amount, setAmount] = useState(100);
@@ -210,21 +210,24 @@ export function BuyerView() {
         </p>
       </ActionCard>
 
-      <ActionCard title="0. Pick a property" description="The live flow is PROP-002; golden scenes run on PROP-001.">
+      <ActionCard title="0. Pick a property" description="Golden scenes run on PROP-001; type any live property id.">
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          {/*
+            Free text rather than a fixed list: the set of live properties changes
+            every rehearsal, and a stale option silently sends the demo at a
+            property the server has never heard of.
+          */}
+          <input
             value={propertyId}
             onChange={(e) => {
-              setPropertyId(e.target.value);
+              setPropertyId(e.target.value.trim().toUpperCase());
               setEns(null);
               setKyc(null);
               setBuyResult(null);
             }}
-            className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
-          >
-            <option value="PROP-002">PROP-002 (live)</option>
-            <option value="PROP-001">PROP-001 (seed — golden scenes)</option>
-          </select>
+            placeholder="PROP-001"
+            className="w-36 rounded-md border border-zinc-300 px-2 py-1 font-mono text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          />
           <button
             onClick={loadEns}
             disabled={busy === "ens"}
