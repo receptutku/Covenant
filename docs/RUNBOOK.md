@@ -71,6 +71,21 @@ curl -s -X POST localhost:3000/api/dev/session -H "x-demo-admin-secret: <secret>
 issued without a proof, which the server logs loudly. The verification path itself is the
 one you saw in the rp-signature and rejection tests."
 
+### 4b. A rental was ENGAGED when the server restarted
+
+The deposit is locked on-chain but the listing is gone from memory, so `settle` and
+`expire` both answer `PROPERTY_NOT_FOUND` — that escrow cannot be released through the API
+again. **Nothing is lost:** escrow, landlord and operator are the same account in this
+demo, so the HBAR is already sitting in the operator's balance.
+
+Do not try to recover it live. Start a fresh listing (`rental/list` → `apply` → `engage`)
+and carry on; the whole cycle takes under a minute.
+
+> Rebuilding rental state from the HCS trail on startup would fix this properly — every
+> `RENTAL_ENGAGED` event carries the listing id, deposit and lock expiry — and it would
+> demonstrate that the audit trail is authoritative rather than decorative. Roadmap, not
+> hackathon.
+
 ### 5. A transfer fails with INSUFFICIENT_TOKEN_BALANCE
 buyer1 ran out of shares (each rehearsal moves 100 to buyer2 permanently).
 ```bash
@@ -111,8 +126,17 @@ Nothing to do during the demo. If the ENS write fails (Sepolia down), it is logg
 
 ## Hard rules
 
-- **Never** run `npm run golden` on demo day — it re-mints the SEED token (PROP-001) and
-  that one is not auto-published; you would have to run `npm run ens:write` after it.
+- **Never** run `npm run golden` on demo day. It re-mints the seed token, and two things
+  go stale at once: the running server keeps the OLD `SEED_TOKEN_ID` in memory (Next reads
+  `.env.local` once, at startup, so you must restart), and the prop-001 ENS record still
+  points at the previous token until you run `npm run ens:write`. The script prints both
+  warnings, but by then you are already mid-incident.
+- **Do not demo from a production build.** `/api/seed`, `/api/reset` and `/api/dev/session`
+  are development-only by design, so under `npm run build && npm start` the seed control
+  and crisis remedies #1, #4 and #5 all answer "This endpoint is disabled in production".
+  Use `npm run dev`.
+- **Never** send the nokyc account to `/api/kyc`. It is refused now, but the reason
+  matters: granting it KYC would end golden scene 1 permanently — there is no revoke.
 - **Never** upload documents against `PROP-001` (the API blocks it, but don't try).
 - After `demo-final` is tagged: bug fixes only, nothing new.
 - The last 90 minutes before submission: one person pushes, the other reviews.

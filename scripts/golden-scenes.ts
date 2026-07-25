@@ -127,8 +127,10 @@ async function main() {
     // Persist the seed token — /api/seed will set up PROP-001 with it.
     persistSeedTokenId(token.tokenId)
     console.log(
-      '\n⚠ SEED_TOKEN_ID changed. The prop-001 ENS record still points at the previous',
-      '\n  token — run `npm run ens:write` so the discovery layer matches the chain.',
+      '\n⚠ SEED_TOKEN_ID changed. Two things are now stale until you act:',
+      '\n  1. RESTART the dev server. Next.js reads .env.local once at startup, so a running',
+      '\n     server keeps serving the PREVIOUS seed token no matter what this file says.',
+      '\n  2. Run `npm run ens:write` so the prop-001 discovery record matches the chain.',
     )
   })
 

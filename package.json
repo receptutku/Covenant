@@ -19,7 +19,8 @@
     "ens:register": "tsx scripts/ens-register.ts",
     "ens:write": "tsx scripts/ens-write.ts",
     "preflight": "tsx scripts/preflight.ts",
-    "fund": "tsx scripts/fund-demo.ts"
+    "fund": "tsx scripts/fund-demo.ts",
+    "merkle": "tsx scripts/merkle-test.ts"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",

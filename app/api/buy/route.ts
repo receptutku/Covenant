@@ -59,22 +59,36 @@ export const POST = handler(async (request) => {
       amount: body.amount,
     })
 
+    const feeTotal = result.assessedCustomFees.reduce((sum, fee) => sum + fee.amount, 0)
+
     // Only successful transfers are recorded. A rejected transfer throws before this point,
     // which is deliberate: the audit trail should not imply a transfer that never happened.
+    //
+    // Both figures are recorded because they genuinely differ. The fee is INCLUSIVE: on a
+    // secondary transfer of 100 the sender is debited 100, the collector takes 2, and the
+    // recipient is credited 98. Publishing only `amount: 100` left the timeline stating a
+    // number Mirror's own token-transfer list for that same transaction contradicts —
+    // exactly the kind of discrepancy an auditor is supposed to catch, found in our own
+    // audit trail.
     await submitEventSafe(HCS_EVENTS.TOKEN_TRANSFERRED, property.propertyId, {
       tokenId: property.tokenId,
       amount: body.amount,
+      netAmount: body.amount - feeTotal,
       from: from.accountId.toString(),
       to,
       mode: body.mode,
       transactionId: result.transactionId,
-      assessedFeeTotal: result.assessedCustomFees.reduce((sum, fee) => sum + fee.amount, 0),
+      assessedFeeTotal: feeTotal,
     })
 
     return jsonResponse({
       transferred: true,
       tokenId: property.tokenId,
       amount: body.amount,
+      // What the recipient actually receives. The fee is inclusive, so on a secondary
+      // transfer this is 98 of the 100 sent — the number the UI should show next to the
+      // balance, since it is the one Mirror will confirm.
+      netAmount: body.amount - feeTotal,
       from: from.accountId.toString(),
       to,
       mode: body.mode,
