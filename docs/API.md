@@ -28,7 +28,8 @@ CONTRACT-VERSION: 4
   document bytes, a document salt, any private key, or a raw Hedera SDK object.
 - **Every `POST` endpoint** can return `INVALID_INPUT` (400): the body is parsed by Zod and a
   malformed one never reaches the handler. The message names the offending field paths
-  (`files.0.type`) but never their values. The per-endpoint error lists below do not repeat it.
+  (`files.0.type`) but never their values. It is listed per endpoint below as well, because
+  several endpoints attach extra meanings to it beyond "the body is malformed".
 
 ### HTTP status code mapping
 
@@ -187,6 +188,9 @@ No body, no auth, no chain calls — cheap enough to poll every few seconds.
 
 `world` is `"configured"` or `"dev-fallback"`. `ens`, `auditTopicId` and every entry of
 `demoAccounts` is `null` when the corresponding environment variable is unset.
+`seededProperties` counts **every** property currently in the in-memory store, not only seeded
+ones — a fresh `POST /api/seed` makes it 2, and a live submission pushes it to 3. A `0` after a
+restart means the store is empty and `/api/seed` has not been run.
 
 > **Read the demo account ids from here — do not hard-code them.** This is not a style
 > preference: the frontend once carried invented account ids left over from the mock, and
@@ -554,27 +558,34 @@ HMAC digest of the nullifier → `associate` → `grantKyc`.
 `amount` is optional and **defaults to 100**; it must be a positive integer ≤ 1000 (the whole
 supply of a property token), otherwise `INVALID_INPUT`.
 
-**Response 200**
+**Response 200** (`primary` — the treasury is exempt from its own fee)
 
 ```json
 {
   "transferred": true,
   "tokenId": "0.0.222333",
   "amount": 100,
-  "netAmount": 98,
+  "netAmount": 100,
   "from": "0.0.1001",
   "to": "0.0.654321",
   "mode": "primary",
   "transactionId": "0.0.1@169...",
-  "assessedCustomFees": [
-    { "amount": 2, "tokenId": "0.0.222333", "collectorAccountId": "0.0.1001" }
-  ],
+  "assessedCustomFees": [],
   "hashscanUrl": "https://hashscan.io/testnet/transaction/..."
 }
 ```
 
-On a primary transfer `assessedCustomFees` is empty (treasury exemption) and
-`netAmount === amount`. On a secondary transfer the fee is `amount: 2` and `netAmount` is 98.
+**Response 200** (`secondary` — same envelope, the 2% fee is assessed on-chain)
+
+```json
+{
+  "amount": 100,
+  "netAmount": 98,
+  "assessedCustomFees": [
+    { "amount": 2, "tokenId": "0.0.222333", "collectorAccountId": "0.0.1001" }
+  ]
+}
+```
 
 > **`netAmount` is the number to put in front of the user, not `amount`.** The 2% fractional
 > fee is **INCLUSIVE**: on a secondary transfer of 100 the sender is debited 100, the
@@ -671,7 +682,10 @@ The server normalizes the name `prop-002.<ENS_PARENT_NAME>` and resolves it on S
 | `hedera.auditTopicId` | | |
 | `property.id` | | |
 
-If any record in the relevant set is missing → `ENS_CONFIG_INCOMPLETE` (422).
+`com.pprev.mode` is required on top of these and is checked first — it decides which set
+applies, so an unreadable one is refused before anything else. If it or any record in the
+relevant set is missing → `ENS_CONFIG_INCOMPLETE` (422). The fallback below is subject to the
+same validation: a degraded response is never an incomplete one.
 
 **Fallback:** if ENS resolution errors, times out, or returns no records at all, the response
 comes back with `"source": "env-fallback"` and the server console logs
@@ -794,9 +808,10 @@ once to mint the seed token)
 { "reset": true }
 ```
 
-Wipes all in-memory state: properties, rentals, sessions and used-proof digests. On-chain
-artefacts are permanent and untouched. To clear *only* the proof digests, use
-`/api/dev/clear-replay` below — a full reset costs a reseed.
+Wipes all in-memory state: properties, rentals, seller sessions, used-proof digests and the
+listing counter (so ids start again at `RENT-001`). On-chain artefacts are permanent and
+untouched. To clear *only* the proof digests, use `/api/dev/clear-replay` below — a full reset
+costs a reseed.
 
 Both endpoints return `404` with `code: "PROPERTY_NOT_FOUND"` in production.
 
@@ -819,6 +834,8 @@ return `404` / `PROPERTY_NOT_FOUND`; with a wrong or missing secret, `401` / `UN
 
 **Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>` · **Request:** empty body
 
+**Response 200**
+
 ```json
 {
   "onboarded": true,
@@ -835,6 +852,8 @@ in which case say so out loud rather than letting the audience believe a verific
 ## `POST /api/dev/rental-apply` — Rental application without a World proof
 
 **Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
+
+**Request**
 
 ```json
 { "listingId": "RENT-001", "tenantAccountId": "0.0.654321" }
@@ -860,6 +879,8 @@ honest record of what happened.
 ## `POST /api/dev/clear-replay` — Forget used World proofs
 
 **Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>` · **Request:** empty body
+
+**Response 200** — `cleared` is how many digests were forgotten.
 
 ```json
 {
@@ -902,6 +923,23 @@ honest record of what happened.
 `reqDeposit` is denominated in HBAR. The landlord gate is the Selfie session (identical to
 seller onboarding).
 
+### Input limits (all violations → `INVALID_INPUT` 400)
+
+| Field | Rule |
+|---|---|
+| `reqDeposit` | `> 0`, `≤ 10000`, and must land on a whole **tinybar** — at most 8 decimal places |
+| `lockWindowSeconds` | integer, `≥ 10`, `≤ 86400` |
+
+> The tinybar rule is not pedantry: Hedera rejects a finer amount with
+> `Hbar in tinybars contains decimals`, and without this check that surfaces as an unhandled
+> 500 deep inside the escrow transfer instead of a clear 400 here. `1.1` is valid; `0.123456789`
+> is not.
+>
+> **The floor on `lockWindowSeconds` is 10 seconds, and it exists so the expiry scene can be
+> demoed live** — you need a window short enough to sit through. Anything below 10 is refused,
+> so a UI that offers "5 seconds" for a quick rehearsal will just fail validation. `600` is the
+> comfortable default for the settle path; `10`–`15` is what the expire path wants.
+
 **Response 200**
 
 ```json
@@ -910,13 +948,18 @@ seller onboarding).
   "propertyId": "PROP-003",
   "state": "LISTED",
   "reqDeposit": 50,
-  "lockWindowSeconds": 600
+  "lockWindowSeconds": 600,
+  "escrowAccountId": "0.0.1001"
 }
 ```
 
+`escrowAccountId` is the account the deposit will move into on `engage` — in this demo the
+operator account (the README is explicit that a custodial escrow is a demo simplification).
+Show it at listing time, not only after engagement.
+
 **Errors:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
 `PROPERTY_NOT_FOUND` (404), `RENTAL_NOT_APPROVED` (422 — the property is not `APPROVED`, or
-it is already `TOKENIZED`)
+it is already `TOKENIZED`), `INVALID_INPUT` (400)
 
 **HCS:** `RENTAL_LISTED`
 
@@ -942,6 +985,9 @@ it is already `TOKENIZED`)
 Predicate: age eligibility (World) plus an income threshold (`income ≥ 3 × rent`, without
 revealing the exact amount).
 
+`monthlyRent` is required and must be `> 0` and `≤ 10000`, otherwise `INVALID_INPUT`. It never
+leaves the server: only the boolean result of the predicate reaches the response and HCS.
+
 **Response 200**
 
 ```json
@@ -958,7 +1004,10 @@ revealing the exact amount).
 ```
 
 **Errors:** `WORLD_PROOF_INVALID` (422), `WORLD_PROOF_REPLAY` (422),
-`PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400)
+`PROPERTY_NOT_FOUND` (404 — unknown `listingId`; the rental endpoints reuse this code for
+listings, there is no separate `LISTING_NOT_FOUND`), `RENTAL_NOT_ENGAGED` (422 — the listing
+is not `LISTED`, i.e. a tenant has already applied or the escrow has moved on),
+`INVALID_INPUT` (400)
 
 **HCS:** `RENTAL_APPLICATION` — the payload carries only the predicate result, never the amount.
 
@@ -988,8 +1037,27 @@ The landlord accepts the application; the tenant's HBAR deposit is transferred i
 }
 ```
 
-**Errors:** `NOT_LANDLORD` (403), `INSUFFICIENT_DEPOSIT` (422),
-`RENTAL_NOT_ENGAGED` (422 — state is not `APPLIED`)
+`lockExpiresAt` is stamped here, not at listing time: the clock starts when the money moves.
+
+**Errors:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
+`PROPERTY_NOT_FOUND` (404 — unknown `listingId`), `NOT_LANDLORD` (403),
+`RENTAL_NOT_ENGAGED` (422 — state is not `APPLIED`), `INSUFFICIENT_DEPOSIT` (422 — also
+returns `hederaStatus`), `INVALID_INPUT` (400)
+
+> **`NOT_LANDLORD` has a second meaning here, and it is the one you will actually hit.**
+> Besides the landlord check, it is thrown when the tenant recorded on the listing is not an
+> account the escrow can debit — i.e. not one of the demo accounts whose key the server holds.
+> The message says so ("the escrow cannot debit this tenant account"), but the code does not.
+>
+> The debit deliberately uses the account recorded at application time rather than one supplied
+> in this request, because that is the account `settle`/`expire` will later refund. Before that
+> change an applicant could name their own account, have someone else's balance charged, and
+> collect the refund. Practical consequence for the UI: apply with an account from
+> `/api/health` → `demoAccounts` (`buyer1` is the intended tenant), or engage fails with a 403
+> that has nothing to do with landlords.
+>
+> `INSUFFICIENT_DEPOSIT` also covers the operator being unable to pay the network fee — the
+> message names which account needs topping up.
 
 **HCS:** `RENTAL_ENGAGED`
 
@@ -1021,7 +1089,12 @@ landlord).
 }
 ```
 
-**Errors:** `NOT_LANDLORD` (403), `RENTAL_NOT_ENGAGED` (422), `LOCK_EXPIRED` (422)
+**Errors:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
+`PROPERTY_NOT_FOUND` (404 — unknown `listingId`), `NOT_LANDLORD` (403),
+`RENTAL_NOT_ENGAGED` (422 — state is not `ENGAGED`, or the listing never had a lock),
+`LOCK_EXPIRED` (422 — past `lockExpiresAt`; use `expire` instead),
+`INSUFFICIENT_DEPOSIT` (422 — the escrow account cannot cover the refund),
+`INVALID_INPUT` (400)
 
 **HCS:** `RENTAL_SETTLED`
 
@@ -1055,89 +1128,19 @@ but a refund plus a landlord penalty.
 }
 ```
 
-**Errors:** `RENTAL_NOT_ENGAGED` (422), `LOCK_NOT_EXPIRED` (409 — called before the lock expired)
+No session is required — that is the point of a permissionless release.
+
+**Errors:** `PROPERTY_NOT_FOUND` (404 — unknown `listingId`), `RENTAL_NOT_ENGAGED` (422 —
+state is not `ENGAGED`, or the listing never had a lock), `LOCK_NOT_EXPIRED` (409 — called
+before the lock expired; the message names the seconds remaining),
+`INSUFFICIENT_DEPOSIT` (422 — the escrow cannot cover deposit + slash), `INVALID_INPUT` (400)
+
+> `refunded` and `slashed` are reported separately, but on-chain this is a **single** transfer
+> of `deposit + slash` from escrow to tenant, rounded down to a whole tinybar. `slashed` is
+> 10% of the deposit (`slashRateBps: 1000`), likewise rounded down — so a deposit of 5 ℏ gives
+> exactly 0.5, and one of 0.3 ℏ gives 0.03.
 
 **HCS:** `RENTAL_EXPIRED`
-
----
-
-# Development-only endpoints
-
-These exist so the flow can be driven without the World simulator, and so a blocked
-rehearsal can be recovered. **They are not part of the demo narrative** — nothing shown to
-judges should depend on them.
-
-Two independent guards on all three: the process must not be in production
-(`NODE_ENV !== 'production'`), and the caller must send `x-demo-admin-secret`. In a
-production build they answer `404`, like `/api/seed` and `/api/reset`.
-
-Each one is a separate route rather than a flag on the real endpoint. A bypass branch
-living inside an authentication handler is the kind of thing that survives a refactor and
-ships; keeping them apart means `/api/onboard` and `/api/rental/apply` contain no bypass at
-all.
-
-## `POST /api/dev/session` — Seller session without a World proof
-
-**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
-
-**Response 200** — same shape as `/api/onboard`, plus a `warning` field:
-
-```json
-{
-  "onboarded": true,
-  "sellerSessionToken": "a1b2c3...",
-  "expiresAt": "2026-07-24T10:45:00.000Z",
-  "warning": "Development session — no World verification was performed."
-}
-```
-
-Use it when the simulator is unavailable. If it is used during a live demo, say so out
-loud — the server logs a warning, and claiming a verification happened when it did not is
-the one thing this project cannot afford.
-
-**Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404 — in production)
-
-## `POST /api/dev/rental-apply` — Tenant application without a World proof
-
-**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
-
-**Request**
-
-```json
-{ "listingId": "RENT-001", "tenantAccountId": "0.0.654321" }
-```
-
-**Response 200** — as `/api/rental/apply`, plus `warning`.
-
-The `RENTAL_APPLICATION` audit event is still emitted, with `verifiedByWorld: false` — the
-honest record of what actually happened.
-
-**Errors:** `UNAUTHORIZED` (401), `PROPERTY_NOT_FOUND` (404), `RENTAL_NOT_ENGAGED` (422)
-
-## `POST /api/dev/clear-replay` — Forget used World proofs
-
-**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>`
-
-**Response 200**
-
-```json
-{ "cleared": 3, "warning": "Previously used World proofs will be accepted again. Development only." }
-```
-
-> **Run this between rehearsals that reuse the same World identity.** A nullifier is derived
-> from (identity, app, action), so the same person repeating the same check presents the
-> *same* nullifier every time. That is replay protection working correctly — and it means
-> rehearsal #2 is refused with `WORLD_PROOF_REPLAY` at step one, before anything else can
-> be shown.
->
-> This clears only the proof history. Seeded properties, sessions and on-chain state are
-> untouched, so no reseed is needed. `/api/reset` also clears it, but takes the demo state
-> with it.
->
-> Verification is not weakened: proofs are still checked against World on every attempt,
-> and each remains single-use after the call.
-
-**Errors:** `UNAUTHORIZED` (401)
 
 ---
 
@@ -1164,12 +1167,12 @@ honest record of what actually happened.
 | `rentalEngage` | `POST /api/rental/engage` |
 | `rentalSettle` | `POST /api/rental/settle` |
 | `rentalExpire` | `POST /api/rental/expire` |
-| `health` | `GET /api/health` |
 
-Development-only, not part of the interface the demo depends on:
+`GET /api/health` and the three `/api/dev/*` routes have **no method on `PprevApiClient`** —
+call them with a plain `fetch`. The one exception is the standalone helper
+`devIssueSellerSession(adminSecret)` exported by `lib/realApi.ts`, which posts to
+`/api/dev/session`; it sits outside the interface on purpose, so the dev bypass cannot be
+reached through the object the UI holds.
 
-| Method | Path |
-|---|---|
-| `devSession` | `POST /api/dev/session` |
-| `devRentalApply` | `POST /api/dev/rental-apply` |
-| `devClearReplay` | `POST /api/dev/clear-replay` |
+`readAudit(propertyId)` always sends a `propertyId`; the endpoint's unfiltered mode (the whole
+protocol trail) is only reachable with a direct `fetch`.
