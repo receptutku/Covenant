@@ -201,6 +201,20 @@ accounts, and then it is a real stuck-funds case. Persisting the rental state ma
 first thing a database would be for here, which is a more useful answer than "we ran out of
 time".
 
+**A seller session does not survive a page reload, and re-verifying does not rescue it.**
+Found in rehearsal, not in review. The session lives only in browser memory, so a reload loses
+it — and the seller cannot simply verify again, because a World nullifier is derived from
+(identity, app, action) and is therefore the same value every time. The second proof is
+refused as a replay. We have an admin endpoint that forgets recorded proofs; a real user does
+not.
+
+The fix is not primarily a cookie. We had used one guard for two different things:
+`verify-buyer` and `verify-tenant` are registrations, where spending the nullifier is exactly
+right, and `onboard-seller` is an authentication, where the same human is meant to return.
+Recognising a known nullifier should re-issue that identity's session rather than refuse it —
+replay of a captured proof is separately handled by the nonce and validity window the RP
+context already signs. Stated as feedback in `docs/FEEDBACK_selfie.md`.
+
 **The income predicate is asserted, not proven.** `/api/rental/apply` returns
 `incomeProven: false`. The threshold is real and derived from the landlord's listing, so an
 applicant cannot set their own bar — but nothing proves the tenant clears it. That needs a

@@ -170,6 +170,36 @@ before presenting.
   been seen — though that state lives in our store, not yours, so the note is the
   realistic fix.
 
+### 3b. One-time nullifiers make *re-authentication* impossible, not just rehearsal
+
+Observation 3 frames determinism as a rehearsal problem. Running the flow properly showed it
+is a product one, and the distinction is worth separating.
+
+A seller completes Selfie Check, and the session exists only in the browser. Reload the page —
+a slip, a crash, a phone that locked — and the session is gone. They verify again, produce the
+same nullifier, and are refused with `WORLD_PROOF_REPLAY`. There is no way forward. We have an
+admin endpoint that forgets recorded proofs, but a real user does not, and should not.
+
+Working out why led somewhere more useful than "add a cookie". We had conflated two different
+things under one guard:
+
+- **`verify-buyer` and `verify-tenant` are registrations.** One human, one KYC grant. Spending
+  the nullifier is exactly right.
+- **`onboard-seller` is an authentication.** The same human is supposed to come back. Spending
+  the nullifier turns a login into a one-time account creation, by construction and silently.
+
+And the nullifier is the right primitive for the second case too — just used the other way
+round. It is a stable per-identity value, so recognising it should *re-issue* a session for
+that identity rather than refuse. Replay of a captured proof is a separate concern and one the
+protocol already handles: `signRequest` signs a nonce and a validity window, so a proof lifted
+from one context cannot be replayed into another regardless of what we do with nullifiers.
+
+**Suggestion:** say this on the actions page. The guidance we could find treats a nullifier as
+something you spend, which reads as the only correct handling. A sentence distinguishing
+"one action per one-time entitlement" from "one action per recurring login" — and noting that
+proof-level replay is already covered by the signed nonce and window — would have saved us from
+shipping an authentication path that locks a user out on a page reload.
+
 ### 4. Verification failures are diagnosable, which is genuinely better than most
 
 `POST /v4/verify/{rp_id}` returned `400` with `code: "validation_error"` and
