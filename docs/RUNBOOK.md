@@ -91,6 +91,13 @@ npm run stage      # clears everything and reseeds. The default choice.
 
 or **use a new property id** — PROP-002 → PROP-004 → PROP-005. The field is free text.
 
+⚠️ If you do take a new id, **leave the Buyer column's property field on PROP-001 or PROP-002**
+when you read ENS. Only prop-001/002/003 have published records; any other name answers
+`ENS_CONFIG_INCOMPLETE` (422), because a name with no `com.pprev.mode` record cannot be
+validated and the env fallback only covers a *total* resolution failure, not an empty one.
+Verified: `POST /api/ens-read {"propertyId":"PROP-060"}` → 422. The buy path is unaffected —
+it treats an unresolvable record as *unavailable*, which never blocks.
+
 Never reuse a property id after a second Selfie Check. Note that a fresh id has no ENS
 record, so the discovery panel falls back to env values and names the previous token; the
 buy still works (the ENS check treats a fallback as *unavailable*, which never blocks), but
