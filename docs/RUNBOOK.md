@@ -163,7 +163,7 @@ no tunnel involved.
 | Primary transfer shows **no fee** | Treasury is fee-exempt. Say it before the judges ask. |
 | nokyc rejection shows a long raw string | That's the point — `ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN` comes from the network, not our code. |
 | The rental deposit "returns" to the tenant on settle | Correct: a deposit is the tenant's money, not the landlord's payment. |
-| Timeline shows events from earlier rehearsals | HCS is immutable — that IS the feature. Filter by property if it distracts. |
+| Timeline shows events from earlier rehearsals | HCS is append-only — that IS the feature. Filter by property if it distracts. |
 | `source: "env-fallback"` badge on ENS panel | Honest degradation, see #3. |
 
 ---

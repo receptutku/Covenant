@@ -49,10 +49,26 @@ glued on for a prize category:
 | Humanity / identity | **World ID 4.0** (Selfie + Identity Check) | Seller/landlord abuse prevention; buyer/tenant eligibility — ZK-based, no personal data disclosed |
 | Asset & settlement | **Hedera HTS** | Fractional property token (1000 shares, `decimals=0`), KYC-gated transfers, 2% fractional fee |
 | Escrow (rental) | **Hedera HBAR transfers** | Deposit lock, clean-refund settlement, permissionless expiry with a 10% landlord slash |
-| Audit trail | **Hedera HCS** | Immutable event log carrying zero PII — enforced at runtime by a payload guard |
+| Audit trail | **Hedera HCS** | Append-only public event log; today's payloads carry digests and ids only, no personal data |
 | Public verification | **Hedera Mirror Node** | The timeline the UI shows is read back from public data, not from our own store |
 | Ownership trust | **Minimal verifier** (Ed25519) | Human review → signed attestation; tokenization is impossible without it |
 | Discovery | **ENS** (Sepolia, v2 + UniversalResolver) | Per-property protocol config resolved live — no token id, topic id or verifier key is hard-coded |
+
+Two caveats on the HCS log, both checkable from outside. **It is append-only, not
+immutable.** A message that reached consensus cannot be edited or removed, but the topic
+(`0.0.9734777`) was created with an admin key, so the operator can still delete the topic
+itself, and with **no submit key**, so anyone at all can publish to it. The defence is on
+the read side: `lib/hedera/mirror.ts` keeps only messages whose `payer_account_id` is our
+operator and drops the rest, so a stranger cannot inject a well-formed `RENTAL_SETTLED`
+into the timeline. Nothing is concealed by that filter — the messages stay public, and
+anyone can apply the same rule to the same topic and reach the same list.
+
+**Payloads carry no personal data going forward, and the past is still there.**
+`/api/attest` now publishes a document root and a count, nothing else. But the payload
+guard matches key *names*, not values, so 39 early `PROPERTY_SUBMITTED` messages
+(sequence 2 to 189 of 248) permanently contain a `city` field. That topic is linked from
+[`docs/EVIDENCE.md`](docs/EVIDENCE.md) and those messages are not coming off it. A log
+that still shows our own mistake is the honest form of this claim.
 
 Both modes share the same three phases — **Register → Apply/Engage → Settle** — and the
 same verifier/World/ENS infrastructure. Only the predicate and the settlement differ:
@@ -82,14 +98,8 @@ npm run accounts:create        # generates buyer1 / buyer2 / nokyc into .env.loc
 npm run bootstrap              # opens the HCS audit topic
 npm run golden                 # mints the seed token + verifies the three golden moments
 npm run ens:write              # publishes per-property config to ENS (Sepolia)
-npm run preflight              # one-shot stage-readiness check (read-only, free)
 npm run dev                    # http://localhost:3000
 ```
-
-Before any rehearsal or the demo itself: `npm run preflight` must end with
-**"All green. Go."** — it verifies every scene precondition from public data (including
-the deliberately-unKYC'd account and ENS↔chain consistency). Crisis procedures live in
-[`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 Then seed before any rehearsal — it registers PROP-001 (sale showcase) and PROP-003
 (rental), tops buyer1 back up by recycling shares from buyer2 rather than draining the
@@ -97,8 +107,27 @@ treasury, and re-associates nokyc **without** granting it KYC. It also re-prepar
 other tokenized property, so a token minted during a live run is demo-ready too.
 
 ```bash
-curl -s -X POST localhost:3000/api/seed -H "x-demo-admin-secret: $DEMO_ADMIN_SECRET"
+export SECRET=$(grep '^DEMO_ADMIN_SECRET=' .env.local | cut -d= -f2)
+curl -s -X POST localhost:3000/api/seed -H "x-demo-admin-secret: $SECRET"
 ```
+
+`.env.local` is read by Next and by `tsx`, not by your shell, so the secret has to be
+exported explicitly — a request with an empty header answers `401 UNAUTHORIZED`.
+
+Preflight runs **last**, not first: it fails hard if the server is unreachable or if
+fewer than two properties are seeded, so it can only pass once `npm run dev` and the seed
+above have run.
+
+```bash
+npm run preflight              # one-shot stage-readiness check (read-only, free)
+```
+
+It exits non-zero on any failure. Exit 0 comes in two forms — `✅ All green. Go.` and
+`⚠️ Green with N warning(s)` — and the second still means read the warnings before going
+on stage. It verifies every scene precondition from public data, including the
+deliberately-unKYC'd account and whether the prop-001 ENS record still matches
+`SEED_TOKEN_ID` (that drifts every time `npm run golden` re-mints the seed token). Crisis
+procedures live in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 Seed and reset require the admin secret: a `POST` with no custom header is a CORS simple
 request, so without it any page on any machine that can reach this server could wipe the
@@ -145,9 +174,17 @@ threshold signature.
 | Token ids, tx ids, account ids | HCS / Mirror / ENS | Yes — public by design |
 | All private keys & secrets | Server env only | **Never** (frontend machine gets a URL, not keys) |
 
-The HCS layer enforces this at runtime: `assertNoSensitiveKeys()` rejects any payload key
-matching nullifier/proof/salt/income/etc. before it can reach the chain. It has already
-caught one real mistake during development — which is exactly why it exists.
+`assertNoSensitiveKeys()` walks every payload before it is submitted and throws on any key
+whose *name* matches nullifier/proof/salt/income/etc. That is a naming discipline, not
+enforcement: it reads names, never values, so both leaks that actually mattered went
+straight past it and had to be removed by hand — the seller-typed `city` in
+`PROPERTY_SUBMITTED` (`app/api/attest/route.ts`), and the verifier's free-text rejection
+reason, which is now published as a length plus a SHA-256 digest instead
+(`app/api/verifier/decision/route.ts`). The guard itself has fired twice, both times on a
+field name containing "income", and both times the effect was that the audit event was
+silently dropped rather than the leak blocked — the chain operation it described had
+already happened, so the write was abandoned and the trail got a hole in it. That is why
+the drop is now counted, exposed on `/api/health`, and `npm run preflight` fails on it.
 
 ## ENS config discovery
 
@@ -165,9 +202,12 @@ prop-002.pprevlisbon.eth          (values are illustrative — the token id
 ```
 
 **What this is and is not.** Discovery is genuinely live: `/api/ens-read` resolves these
-records on every request, `/api/tokenize` publishes each newly minted token id back to
-ENS, and a client learns which token a property uses by asking Sepolia rather than by
-trusting us. What it is *not*, in this build, is the settlement path — transfers read the
+records from Sepolia, `/api/tokenize` publishes each newly minted token id back to ENS,
+and a client learns which token a property uses by asking Sepolia rather than by trusting
+us. Resolution sits behind a 60-second in-memory cache (8 seconds when the answer is an
+env fallback, so a degraded response cannot outlive the outage), and `/api/tokenize` drops
+the cached entry as it writes — a freshly minted token id resolves immediately rather than
+up to a minute later. What it is *not*, in this build, is the settlement path — transfers read the
 token from the server's own record, not from ENS. Making ENS authoritative for settlement
 is the honest next step; claiming it already is would be an overstatement, and the code is
 right there to check.
@@ -190,7 +230,8 @@ Implementation notes worth knowing:
 ## Evidence
 
 Every claim above links to a permanent, independently verifiable artefact — real testnet
-transactions, not screenshots: [`docs/EVIDENCE.md`](docs/EVIDENCE.md)
+transactions and the accounts, token and topic they belong to, not screenshots:
+[`docs/EVIDENCE.md`](docs/EVIDENCE.md)
 
 ## AI Usage
 
@@ -212,7 +253,7 @@ documented in the commit history rather than smoothed over.
 |---|---|---|
 | [`docs/API.md`](docs/API.md) | API contract — the single source of truth | Recep |
 | `docs/EVIDENCE.md` | Live on-chain evidence links | Recep |
-| `docs/SUBMISSION.md` | ETHGlobal submission text | Akif |
+| `docs/SUBMISSION.md` | ETHGlobal submission text — _(not written yet)_ | Akif |
 | `docs/FEEDBACK_selfie.md` | World Selfie Check feedback | Akif (user) + Recep (developer) |
 | `docs/FEEDBACK_identity.md` | World Identity Check feedback | Akif (user) + Recep (developer) |
 
