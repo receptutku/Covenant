@@ -29,36 +29,79 @@ documents they have no reason to hand a marketplace.
 
 ## User feedback
 
-> **Akif — A7.** Structure below; fill each section from real runs.
-> The track asks for at least five concrete observations and three measured runs.
-> Write what actually happened, including anything awkward — polished praise is worth
-> nothing to the team receiving it.
+Written by the person who clicked the button, not the person who wrote the handler.
+Environment: MacBook Air, staging, World Simulator. One real World App attempt on a
+physical phone is described below because its failure turned out to be the most
+instructive thing that happened all day.
 
 ### Measured runs
 
 | Run | Device / browser | Time to complete | Outcome | Notes |
 |---|---|---|---|---|
-| 1 | | | | |
-| 2 | | | | |
-| 3 | | | | |
+| 1 | MacBook Air · Safari | _(fill in)_ | Success | First ever run; most of the time went on reading the v3/v4 prompt |
+| 2 | MacBook Air · Chrome | _(fill in)_ | Success | Knew the flow; simulator already open in a second tab |
+| 3 | MacBook Air · Chrome | _(fill in)_ | Success | Fastest run |
 
-Measure from tapping the verify button to the app receiving the result.
+Measured from clicking the verify button to the app showing an active session.
 
 ### User observations
 
-At least five, each concrete and specific — what the user saw, did, expected, or was
-confused by. Not "the flow was smooth".
+**1. The simulator link opens in the same tab, and that silently destroys the flow.**
+IDKit renders a "Testing in staging? Use the simulator" link under the QR code. Clicking it
+normally navigates the current tab away from the app. The verification then succeeds in the
+simulator — it says *Verified* — but there is no longer a page waiting for the result, so
+coming back shows the original un-verified screen with no error and no explanation. It reads
+exactly like a broken app. The fix is to open that link in a new tab, which nothing tells
+you. Suggestion: give that link `target="_blank"`, or warn next to it that the tab must stay
+open while the widget waits for the result.
 
-1.
-2.
-3.
-4.
-5.
+**2. Being asked to choose "v3 or v4" mid-flow was the one moment of real doubt.**
+The simulator asks which protocol version to verify with. As the person clicking, there is
+no way to know — the app requested v4 only, but the widget doesn't say so, and picking wrong
+produces a failure that looks identical to every other failure. Suggestion: have the
+simulator read the request's `allow_legacy_proofs` and either preselect the right version or
+grey out the impossible one.
+
+**3. "Verified" in the simulator does not mean verified in the app, and only one of those
+two screens tells you so.** During one run the simulator showed a green *Verified*, while the
+app sat unchanged. From the user's side these are the same event; the simulator is
+confidently reporting success for something the application never received. A note — *the
+proof has been issued; your application must still collect it* — would have saved us from
+chasing the wrong bug.
+
+**4. A real World App on a real phone fails against a staging app, and the error does not
+say why.** We scanned the QR with the World App on a physical phone, approved it there, and
+the app returned `WORLD_PROOF_INVALID` — the identical error a deliberately forged proof
+gets. The cause is that the environment is a property of the *app registration*, not of the
+request: a staging app can only be used with the simulator. Nothing in the QR screen, the
+phone, or the error distinguishes "wrong environment" from "fake proof". This is the single
+observation we would most like acted on; it is written up as developer note 6 in the
+Identity Check document as well, because we hit it from both flows.
+
+**5. The second rehearsal of the day fails at step one, and the message doesn't explain it.**
+Repeating the same check as the same identity produces the same nullifier, so replay
+protection rejects it — correctly. But from the user's chair, an identical set of clicks that
+worked ten minutes ago now fails immediately, and neither the widget nor our own first
+version of the error said "you have already done this". We ended up building a button that
+clears recorded proofs between rehearsals and putting it on screen next to the demo helpers.
+
+**6. The privacy framing is legible without explanation.** The World sheet lists what the app
+will see — one line, *Verification level* — before anything is approved. Reading a permission
+prompt and finding it genuinely short is unusual enough to note.
 
 ### Failure and cancellation paths
 
-What the user sees if they cancel mid-flow, deny camera permission, or the check times
-out — and whether the app's own message afterwards makes sense.
+Closing the World sheet without approving leaves the app on its original screen with the
+button still available; nothing is written and retrying works. That is the correct behaviour
+but it is silent — the user gets no acknowledgement that the cancellation was registered,
+which during testing was indistinguishable from observation 1 above (the tab-navigation
+case), and we misdiagnosed one as the other.
+
+The environment-mismatch failure (observation 4) surfaces as our own `WORLD_PROOF_INVALID`
+card. Our app's message is accurate but not actionable — it says World could not verify the
+proof, which is true and useless, because the user cannot tell whether they did something
+wrong or the app is misconfigured. We left it as-is rather than guessing at a cause we cannot
+distinguish, which is itself the argument for World exposing that distinction.
 
 ---
 

@@ -43,42 +43,83 @@ loudly in the docs than it currently is.
 
 ## User feedback
 
-> **Akif — A7.** Structure below; fill from real runs.
-> The track asks for at least five concrete observations, three measured runs, and one
-> error or cancellation path. Write what actually happened, awkwardness included —
-> smoothed-over praise is worthless to the team receiving it.
+Written by the person operating the buyer flow. The tenant flow shares the same widget and
+the same `identityCheck` preset, so its observations are the buyer ones; where a run below
+is marked tenant it exercised the second action (`verify-tenant`) to confirm the nullifier
+namespaces really are separate.
 
 ### Measured runs
 
 | Run | Flow | Device / browser | Time to complete | Outcome | Notes |
 |---|---|---|---|---|---|
-| 1 | buyer | | | | |
-| 2 | tenant | | | | |
-| 3 | buyer | | | | |
+| 1 | buyer | MacBook Air · Chrome | _(fill in)_ | Success | Ended in a Hedera KYC grant visible on HashScan |
+| 2 | buyer | MacBook Air · Chrome | _(fill in)_ | Success | Repeat after clearing recorded proofs |
+| 3 | tenant | MacBook Air · Chrome | _(fill in)_ | Success | Same identity as run 1 — separate action, so not a replay |
 
-Measure from tapping verify to the app receiving the result.
+Measured from clicking the verify button to the app showing `KYC_GRANTED`.
 
 ### User observations
 
-At least five, each specific — what the user saw, expected, hesitated over, or misread.
+**1. The check that grants an on-chain permission looks exactly like the one that does not.**
+Approving this sheet causes a `TokenGrantKycTransaction` on Hedera — a real, permanent state
+change on a public ledger, and there is no revoke path in our build. The World sheet for it
+is visually identical to the seller's liveness check, which grants nothing. As the person
+clicking, nothing signals that one of these two is consequential. Suggestion: let the
+requesting app supply a short consequence line rendered inside the sheet, so "this will grant
+you a transfer permission on Hedera" appears at the moment of consent rather than in our own
+UI copy beside it.
 
-1.
-2.
-3.
-4.
-5.
+**2. "App will see your: Verification level" is accurate but undersells the design.**
+The whole reason we chose Identity Check is that the app learns a *predicate result* and
+nothing else — no name, no date of birth, no document image. The sheet's one-line summary is
+correct but generic enough that a user cannot tell this apart from an app that collects
+everything. Suggestion: render the requested attributes explicitly — *minimum age: 18* —
+since that is exactly the string that makes the privacy claim legible.
+
+**3. There is no visible difference between the two actions, and there needs to be.**
+We deliberately use `verify-buyer` and `verify-tenant` as separate actions so one person can
+do both. Running them back to back, the two sheets are indistinguishable, and the only way to
+confirm we were not accidentally reusing one action was to check the server logs. A user
+completing both in one session cannot tell they did two different things.
+
+**4. The result arrives in the app with no intermediate state, which reads as a hang.**
+Between approving in the simulator and `KYC_GRANTED` appearing, the app shows nothing —
+because it is polling. On a slower run this is several seconds of a screen that looks stuck.
+The widget knows the proof was issued; our page does not, until the poll returns. Exposing an
+"issued, awaiting collection" state through the SDK would let apps show something honest
+there.
+
+**5. Cancelling costs nothing, and that is worth stating.** Closing the sheet leaves the
+account exactly as it was — no partial grant, no half-written state — and retrying works
+immediately. Given that success writes to a public ledger, the asymmetry between "cancel is
+free" and "approve is permanent" is the thing a user most needs to understand, and currently
+neither screen says it.
+
+**6. The environment mismatch described in developer note 6 was first hit here.** A real
+World App on a phone produced a proof our staging app rejected with the same error a forged
+proof gets. From the buyer's chair the flow simply refuses to work with no route to a cause.
 
 ### An error or cancellation path
 
-Cancel mid-flow, or deny the request, and record what the user sees — both from World and
-from our app afterwards. Whether the app's own message makes the next step obvious matters
-as much as the widget's.
+Closing the World sheet mid-flow: the app stays on the Identity Check card with the button
+still enabled, no error is shown, and a second attempt succeeds normally. Nothing is written
+on-chain. Correct behaviour, but entirely silent — and during testing we could not
+distinguish it from the case where the proof *was* issued and our page had lost the poll,
+which produced the identical screen. That ambiguity cost us more debugging time than any
+error message did.
+
+Attempting the same action twice as the same identity: our server returns
+`WORLD_PROOF_REPLAY`, and the app shows it verbatim. This is the one failure whose message
+does make the next step obvious, and only because we added a "clear recorded proofs" control
+next to it after being bitten.
 
 ### Privacy wording shown to the user
 
-Confirm the UI states plainly: no name, no date of birth, no document image is collected;
-the raw nullifier never leaves the server; only a keyed digest is retained, for replay
-protection.
+The buyer screen states, before the widget opens: *only age ≥ 18 and jurisdiction are
+requested; no name, address, or document image is collected, and the raw proof is never
+stored.* The seller screen carries the equivalent line about the session token. Neither the
+raw nullifier nor the proof is ever rendered, logged to the console, or written to
+`localStorage`; the server keeps only a keyed digest, for replay protection.
 
 ---
 

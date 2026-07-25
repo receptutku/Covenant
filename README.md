@@ -18,19 +18,77 @@ deposit).
 
 ## Pitch
 
-_(Akif — A9)_
+Fractional real-estate platforms ask you to trust two things you cannot check: that the
+property is real and belongs to the person selling it, and that the people you are trading
+with are allowed to be there. The usual answer is a company that has verified everyone and
+promises it did — and a database of passport scans waiting for a breach.
+
+PPREV replaces both promises with checks that hold without us.
+
+A property cannot be tokenized until a human reviewer signs an attestation over its
+documents; change one character and the mint refuses. A buyer cannot receive shares until
+they have proven eligibility — and once they have, the refusal for anyone who hasn't comes
+from **Hedera itself**, not from our code. Take this server offline and that rule still
+holds.
+
+Nobody hands over a passport to make that work. World ID proves a live human is present
+and that an eligibility predicate is true; the app receives the *result*, never the
+underlying facts. We could not produce a buyer's name or date of birth if we were compelled
+to, because we never received one.
 
 ## Screenshots
 
-_(Akif — A9)_
+The demo runs as three columns on one screen — Seller, Verifier, Buyer — because the whole
+argument is that these are three different parties with three different amounts of trust.
+
+| | |
+|---|---|
+| `docs/img/01-overview.png` | The three roles side by side |
+| `docs/img/02-kyc-denied.png` | Hedera refusing a transfer to an unverified wallet |
+| `docs/img/03-secondary-fee.png` | 100 sent, 2 taken by the network, 98 received |
+| `docs/img/04-tamper.png` | A doctored attestation rejected at tokenize |
 
 ## How it works
 
-_(Akif — A9)_
+Four gates, in order. Each one is enforced by something outside this application.
+
+**1. A live human, or no listing.** The seller passes World ID's Selfie Check
+(`onboard-seller`) before they can upload anything. This does not prove they own the
+property — it prevents one actor from farming forty plausible listings. The app receives a
+proof of humanity and an opaque session token; the nullifier never reaches the browser.
+
+**2. A signed attestation, or no token.** Documents go to a human verifier, who reviews them
+and signs an Ed25519 attestation binding `{propertyId, seller, documentRoot, expiry}`.
+`/api/tokenize` accepts nothing else. The document bytes never leave the server — only a
+Merkle root and a count are published to Hedera's audit topic.
+
+**3. Proven eligibility, or no shares.** The buyer passes Identity Check (`verify-buyer`),
+which asserts age and jurisdiction and discloses neither. On success the server grants
+Hedera KYC on the property token. From that moment the permission is enforced at the network
+level: a transfer to an account without a grant fails with
+`ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN`, returned by consensus nodes, not by an `if` statement
+in our route handler.
+
+**4. Config that isn't ours to lie about.** Before the buyer flow shows anything, it resolves
+the property's configuration — token id, audit topic, verifier public key, policy hash —
+from that property's ENS subname on Sepolia. A client learns which token a property uses by
+asking ENS, not by trusting our response.
+
+Settlement carries the protocol's economics with it: a secondary transfer of 100 shares
+debits the sender 100, the network takes 2 as a fractional fee, and the recipient receives
+98. The fee is assessed by Hedera against the token's own fee schedule — the application
+never moves it, and the fee schedule is immutable.
+
+The same four gates run in rental mode, where the settlement is an HBAR escrow release
+instead of a share transfer. One core, two modes.
 
 ## Track table
 
-_(Akif — A9)_
+| Track | What we built | Where to check it |
+|---|---|---|
+| **Hedera** | HTS token with a KYC key and an immutable 2% fractional fee; HCS append-only audit topic; Mirror Node as the read path for everything the UI claims. No Solidity — every operation is a native SDK transaction. | [`docs/EVIDENCE.md`](docs/EVIDENCE.md) · `npm run e2e:sale` |
+| **World** | World ID 4.0 with three separate actions (`onboard-seller`, `verify-buyer`, `verify-tenant`) so one person can be a seller, a buyer and a tenant without burning a nullifier. Proofs are re-verified server-side; `success: true` from the client is never trusted. | [`docs/FEEDBACK_selfie.md`](docs/FEEDBACK_selfie.md) · [`docs/FEEDBACK_identity.md`](docs/FEEDBACK_identity.md) |
+| **ENS** | Per-property subnames on the ENSv2 alpha carrying protocol config as text records, written programmatically and resolved live before the buyer flow renders. Degrades to a marked env-fallback rather than taking the demo down. | `npm run ens:write` · the ENS panel in the Buyer column |
 
 <!-- ═══════════ END OF TOP HALF ═══════════ -->
 
@@ -253,7 +311,7 @@ documented in the commit history rather than smoothed over.
 |---|---|---|
 | [`docs/API.md`](docs/API.md) | API contract — the single source of truth | Recep |
 | `docs/EVIDENCE.md` | Live on-chain evidence links | Recep |
-| `docs/SUBMISSION.md` | ETHGlobal submission text — _(not written yet)_ | Akif |
+| [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | ETHGlobal submission text | Akif |
 | `docs/FEEDBACK_selfie.md` | World Selfie Check feedback | Akif (user) + Recep (developer) |
 | `docs/FEEDBACK_identity.md` | World Identity Check feedback | Akif (user) + Recep (developer) |
 
