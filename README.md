@@ -378,7 +378,6 @@ documented in the commit history rather than smoothed over.
 
 | File | Contents | Owner |
 |---|---|---|
-| [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | The protocol architecture: artifacts, phases, security claims, and what is not proven | Recep |
 | [`docs/API.md`](docs/API.md) | API contract — the single source of truth | Recep |
 | [`docs/EVIDENCE.md`](docs/EVIDENCE.md) | Live on-chain evidence links | Recep |
 | [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | ETHGlobal submission text | Akif |
