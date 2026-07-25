@@ -71,10 +71,14 @@ export const POST = handler(async (request) => {
 
   putProperty(property)
 
+  // `city` is deliberately NOT published. It is free text the seller types, and the payload
+  // guard inspects key names rather than values — so nothing would have stopped
+  // "Lisbon — owner Ana R., born 1984" from being written to a public topic permanently.
+  // The audit trail needs to record that documents were submitted and what they commit to;
+  // where the property is is display metadata the API already serves.
   const event = await submitEventSafe(HCS_EVENTS.PROPERTY_SUBMITTED, property.propertyId, {
     documentRoot: root,
     documentCount: files.length,
-    city: property.city,
   })
 
   return jsonResponse({

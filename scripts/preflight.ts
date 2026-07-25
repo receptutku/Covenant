@@ -76,6 +76,7 @@ async function checkServer() {
     world?: string
     seededProperties?: number
     demoAccounts?: Record<string, string | null>
+    droppedAuditEvents?: string[]
   }
   try {
     const response = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(5_000) })
@@ -99,6 +100,13 @@ async function checkServer() {
   const seeded = health.seededProperties ?? 0
   if (seeded >= 2) pass('demo state loaded', `${seeded} properties in the store`)
   else fail('store is empty or partial', `${seeded} properties — run POST /api/seed`)
+
+  // A dropped event means the trail has a hole in it and the timeline will be missing a
+  // step. It has happened twice, both times found by accident; this is what turns it into
+  // something the pre-stage check tells you about.
+  const dropped = health.droppedAuditEvents ?? []
+  if (dropped.length === 0) pass('no audit events dropped by the payload guard')
+  else fail(`${dropped.length} audit event(s) dropped`, dropped[0])
 
   const missing = Object.entries(health.demoAccounts ?? {})
     .filter(([, value]) => !value)

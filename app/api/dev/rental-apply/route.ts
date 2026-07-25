@@ -21,6 +21,9 @@ import { accountIdSchema } from '@/lib/schemas'
 const schema = z.object({
   listingId: z.string().min(1),
   tenantAccountId: accountIdSchema,
+  // Mirrors the real endpoint so both paths compute and record the same threshold. A dev
+  // bypass that emits a DIFFERENT audit payload tests something the demo never runs.
+  monthlyRent: z.number().positive().max(10_000).default(1),
 })
 
 export const POST = handler(async (request) => {
@@ -41,11 +44,15 @@ export const POST = handler(async (request) => {
 
   putRental({ ...rental, state: 'APPLIED', tenantAccountId: body.tenantAccountId })
 
+  const INCOME_MULTIPLE = 3
+  const requiredMonthlyEarnings = body.monthlyRent * INCOME_MULTIPLE
+
   await submitEventSafe(HCS_EVENTS.RENTAL_APPLICATION, rental.propertyId, {
     listingId: rental.listingId,
     ageEligible: true,
     thresholdMet: true,
-    thresholdRule: 'income >= 3x rent',
+    thresholdRule: `income >= ${INCOME_MULTIPLE}x rent`,
+    requiredMonthlyEarnings,
     verifiedByWorld: false,
   })
 

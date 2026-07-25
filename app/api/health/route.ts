@@ -1,6 +1,6 @@
 import { jsonResponse } from '@/lib/api'
 import { isWorldConfigured } from '@/lib/world/verify'
-import { listProperties } from '@/lib/store'
+import { listDroppedEvents, listProperties } from '@/lib/store'
 
 /**
  * Liveness plus the public identifiers the frontend would otherwise have to hard-code.
@@ -26,6 +26,10 @@ export const GET = () =>
     ens: process.env.ENS_PARENT_NAME?.trim() || null,
     auditTopicId: process.env.AUDIT_TOPIC_ID?.trim() || null,
     seededProperties: listProperties().length,
+    // Audit events the on-chain payload guard refused. Non-zero means a payload carried a
+    // key that looks like personal data, so the event was dropped rather than published —
+    // leaving a hole in the trail that nothing else announces. preflight fails on this.
+    droppedAuditEvents: listDroppedEvents(),
     demoAccounts: {
       // The KYC-verified buyer, and the tenant in the rental flow.
       buyer1: process.env.BUYER1_ID?.trim() || null,

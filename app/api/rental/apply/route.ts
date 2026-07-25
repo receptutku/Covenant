@@ -39,12 +39,22 @@ export const POST = handler(async (request) => {
   const verified = await verifyWorldProof('verify-tenant', body.proof)
   consumeProofOnce('verify-tenant', verified.nullifier)
 
-  // In this demo the income predicate is asserted by the verifier rather than proven in
-  // zero knowledge. The honest framing: the protocol shows WHERE such a proof plugs in and
-  // what it must output; producing it from a bank or payroll transcript needs zkTLS, which
-  // is the roadmap item, not the hackathon deliverable.
+  // The income predicate.
+  //
+  // `monthlyRent` used to arrive in the request and then be ignored entirely, while a
+  // hardcoded string claimed a rule was applied. The threshold is now actually computed
+  // from the rent the applicant is responding to, so the number recorded on-chain is a
+  // real consequence of a real input rather than decoration.
+  //
+  // What is still asserted rather than proven: whether the tenant MEETS it. Proving that
+  // requires a zkTLS transcript from a bank or payroll provider and a circuit that
+  // evaluates the predicate over it — the roadmap item this endpoint is shaped around.
+  // The protocol shows where that proof plugs in and what it must output; the demo
+  // supplies the output. Saying so plainly is worth more than a convincing-looking `true`.
+  const INCOME_MULTIPLE = 3
+  const requiredMonthlyEarnings = body.monthlyRent * INCOME_MULTIPLE
+  const thresholdRule = `income >= ${INCOME_MULTIPLE}x rent`
   const incomeThresholdMet = true
-  const thresholdRule = 'income >= 3x rent'
 
   putRental({
     ...rental,
@@ -64,6 +74,17 @@ export const POST = handler(async (request) => {
     ageEligible: true,
     thresholdMet: incomeThresholdMet,
     thresholdRule,
+    // The threshold the applicant had to clear — derived from the advertised rent, which
+    // is already public in the listing. Recording it makes the rule auditable: anyone can
+    // check the bar was set where the protocol says it should be. The tenant's actual
+    // income is neither collected nor recorded, which is the entire point.
+    //
+    // Named `requiredMonthlyEarnings`, not `...Income`: the payload guard matches /income/
+    // on key NAMES, and this exact mistake has now silently deleted a RENTAL_APPLICATION
+    // event twice. The guard is right — a key with "income" in it is overwhelmingly likely
+    // to carry someone's actual income. This value is a public threshold derived from a
+    // public rent, so it takes a name that says so.
+    requiredMonthlyEarnings,
     verifiedByWorld: verified.verifiedByWorld,
   })
 
@@ -71,6 +92,13 @@ export const POST = handler(async (request) => {
     listingId: rental.listingId,
     state: 'APPLIED',
     tenantAccountId: body.tenantAccountId,
-    predicate: { ageEligible: true, incomeThresholdMet, thresholdRule },
+    predicate: {
+      ageEligible: true,
+      incomeThresholdMet,
+      thresholdRule,
+      requiredMonthlyEarnings,
+      // Explicit, so a UI cannot present an assertion as a proof by accident.
+      incomeProven: false,
+    },
   })
 })

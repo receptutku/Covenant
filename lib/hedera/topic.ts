@@ -4,7 +4,7 @@ import {
   TopicMessageSubmitTransaction,
 } from '@hashgraph/sdk'
 import { getClient, getOperator, hashscanUrl } from './client'
-import { recordTransaction } from '../store'
+import { recordDroppedEvent, recordTransaction } from '../store'
 import type { HcsEnvelope, HcsEventType } from '../types'
 
 /**
@@ -138,10 +138,29 @@ export async function submitEventSafe(
   try {
     return await submitEvent(eventType, propertyId, payload)
   } catch (error) {
-    console.error(
-      `Failed to write HCS event (${eventType}/${propertyId}):`,
-      error instanceof Error ? error.message : error,
-    )
+    const message = error instanceof Error ? error.message : String(error)
+
+    // A guard violation is a bug in OUR payload, not a transient network condition, and
+    // swallowing it deletes an audit event silently. That has now happened twice — both
+    // times a field was named something containing "income", and both times it was found
+    // by accident while looking at the timeline for another reason. A privacy guard that
+    // protects the trail by quietly erasing it has traded one problem for another.
+    //
+    // The request still succeeds, because the chain operation it describes already did and
+    // failing it would be worse. But the drop is counted, `/api/health` exposes the count,
+    // and `npm run preflight` fails on it — so the next one is caught before a rehearsal
+    // rather than during one.
+    if (message.includes('sensitive field')) {
+      recordDroppedEvent(`${eventType}: ${message}`)
+      console.error(`\n${'!'.repeat(70)}`)
+      console.error(`AUDIT EVENT DROPPED — ${eventType}/${propertyId}`)
+      console.error(message)
+      console.error('Rename the offending key. preflight will fail until the server restarts.')
+      console.error(`${'!'.repeat(70)}\n`)
+      return null
+    }
+
+    console.error(`Failed to write HCS event (${eventType}/${propertyId}): ${message}`)
     return null
   }
 }

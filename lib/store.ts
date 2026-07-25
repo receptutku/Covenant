@@ -26,6 +26,14 @@ type Store = {
   rentals: Map<string, Rental>
   /** Used to generate RENT-001, RENT-002 ... */
   rentalCounter: number
+  /**
+   * Audit events refused by the on-chain payload guard.
+   *
+   * Kept because the guard's failure mode is silence: it protects the chain from a
+   * sensitive key by dropping the event, which leaves a gap in the trail that nothing
+   * announces. Surfacing a count turns "I happened to notice" into "preflight said so".
+   */
+  droppedEvents: string[]
 }
 
 const GLOBAL_KEY = Symbol.for('pprev.store.v1')
@@ -38,6 +46,7 @@ function createStore(): Store {
     hederaTransactions: [],
     rentals: new Map(),
     rentalCounter: 0,
+    droppedEvents: [],
   }
 }
 
@@ -45,8 +54,28 @@ type GlobalWithStore = typeof globalThis & { [GLOBAL_KEY]?: Store }
 
 export function getStore(): Store {
   const g = globalThis as GlobalWithStore
-  if (!g[GLOBAL_KEY]) g[GLOBAL_KEY] = createStore()
-  return g[GLOBAL_KEY]
+  if (!g[GLOBAL_KEY]) {
+    g[GLOBAL_KEY] = createStore()
+    return g[GLOBAL_KEY]
+  }
+
+  // Backfill fields added since this store object was created.
+  //
+  // The store surviving hot reload is the point of putting it on `globalThis` — but it
+  // means a running process keeps a store built by an OLDER version of this module. Adding
+  // a field and reading it immediately returns `undefined`, and `[...undefined]` throws:
+  // `/api/health` started answering 500 the moment `droppedEvents` was introduced, on a
+  // server that had been running fine all morning. Restarting hides it, which is exactly
+  // why it is worth handling — the next person to add a field will not think of this.
+  const store = g[GLOBAL_KEY]
+  const fresh = createStore()
+  for (const key of Object.keys(fresh) as (keyof Store)[]) {
+    if (store[key] === undefined) {
+      // Types are checked at the declaration; this is a one-way widening for the copy.
+      ;(store as Record<string, unknown>)[key] = fresh[key]
+    }
+  }
+  return store
 }
 
 /** For `/api/reset` — wipes all demo state. */
@@ -121,6 +150,16 @@ export function clearReplayDigests(): number {
   const count = digests.size
   digests.clear()
   return count
+}
+
+/** Records an audit event the payload guard refused. See `submitEventSafe`. */
+export function recordDroppedEvent(reason: string): void {
+  getStore().droppedEvents.push(reason)
+}
+
+/** Guard-refused audit events since the process started. Read by /api/health. */
+export function listDroppedEvents(): string[] {
+  return [...getStore().droppedEvents]
 }
 
 export function claimReplayDigest(digest: string): boolean {
