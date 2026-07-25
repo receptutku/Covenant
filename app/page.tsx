@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SellerView } from "@/app/views/SellerView";
 import { VerifierView } from "@/app/views/VerifierView";
 import { BuyerView } from "@/app/views/BuyerView";
+import type { Attestation } from "@/lib/api-types";
 
 const TABS = [
   { key: "seller", label: "Seller" },
@@ -15,6 +16,17 @@ type TabKey = (typeof TABS)[number]["key"];
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabKey>("seller");
+
+  // Lifted here because Seller and Verifier are separate components/sessions in
+  // real life; in this single-page demo they share state through the parent.
+  // The Verifier issues the attestation, the Seller needs it to call tokenize —
+  // docs/API.md has no dedicated "fetch my attestation" endpoint, so the page
+  // itself acts as the notification channel between the two roles.
+  const [attestations, setAttestations] = useState<Record<string, Attestation>>({});
+
+  function handleApproved(propertyId: string, attestation: Attestation) {
+    setAttestations((prev) => ({ ...prev, [propertyId]: attestation }));
+  }
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 dark:bg-black">
@@ -43,22 +55,27 @@ export default function Home() {
         ))}
       </nav>
 
-      {/* Mobile: single column, active tab only */}
-      <main className="flex-1 p-4 sm:p-6 lg:hidden">
-        {activeTab === "seller" && <SellerView />}
-        {activeTab === "verifier" && <VerifierView />}
-        {activeTab === "buyer" && <BuyerView />}
-      </main>
-
-      {/* Desktop: all three columns side by side */}
-      <main className="hidden flex-1 grid-cols-3 gap-6 p-6 lg:grid">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <SellerView />
+      {/*
+        Each view is mounted exactly ONCE and shown/hidden with CSS only.
+        Rendering them conditionally per tab would unmount the inactive ones and
+        wipe their state — e.g. the seller would lose their session just by
+        looking at the verifier tab. Below `lg` only the active tab is visible;
+        from `lg` up all three sit side by side.
+      */}
+      <main className="flex-1 p-4 sm:p-6 lg:grid lg:grid-cols-3 lg:gap-6 lg:p-6">
+        <div
+          className={`${activeTab === "seller" ? "block" : "hidden"} lg:block rounded-2xl lg:border lg:border-zinc-200 lg:bg-white lg:p-4 lg:dark:border-zinc-800 lg:dark:bg-zinc-950`}
+        >
+          <SellerView attestations={attestations} />
         </div>
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <VerifierView />
+        <div
+          className={`${activeTab === "verifier" ? "block" : "hidden"} lg:block rounded-2xl lg:border lg:border-zinc-200 lg:bg-white lg:p-4 lg:dark:border-zinc-800 lg:dark:bg-zinc-950`}
+        >
+          <VerifierView onApproved={handleApproved} />
         </div>
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <div
+          className={`${activeTab === "buyer" ? "block" : "hidden"} lg:block rounded-2xl lg:border lg:border-zinc-200 lg:bg-white lg:p-4 lg:dark:border-zinc-800 lg:dark:bg-zinc-950`}
+        >
           <BuyerView />
         </div>
       </main>

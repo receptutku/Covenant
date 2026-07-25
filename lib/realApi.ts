@@ -93,6 +93,18 @@ export function setDemoAdminSecret(secret: string) {
   demoAdminSecret = secret;
 }
 
+/**
+ * ⚠ DEV/TEST ONLY — not part of docs/API.md's versioned contract.
+ * Calls Recep's `/api/dev/session` bypass (see that file's comment): issues a
+ * seller session without going through real World verification. Requires the
+ * admin secret and only works while the server is not in production. Use this
+ * to test the Seller → Verifier → Tokenize flow before the real World IDKit
+ * widget is wired in (Phase A7).
+ */
+export function devIssueSellerSession(adminSecret: string): Promise<OnboardSellerResult> {
+  return post<OnboardSellerResult>("/api/dev/session", {}, { "x-demo-admin-secret": adminSecret });
+}
+
 export const realApi: PprevApiClient = {
   onboardSeller: (input: OnboardSellerInput) => post<OnboardSellerResult>("/api/onboard", input),
 

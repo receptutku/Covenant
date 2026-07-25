@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { api, ApiRequestError } from "@/lib/apiClient";
+import { setDemoAdminSecret } from "@/lib/realApi";
 import type { PendingVerificationItem, Attestation } from "@/lib/api-types";
 import { ActionCard } from "@/app/components/common/ActionCard";
 import { StatusBadge } from "@/app/components/common/StatusBadge";
 import { ErrorCard } from "@/app/components/common/ErrorCard";
 import { PrivacyNote } from "@/app/components/common/PrivacyNote";
 
-export function VerifierView() {
+export function VerifierView({ onApproved }: { onApproved: (propertyId: string, attestation: Attestation) => void }) {
   const [adminSecret, setAdminSecret] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [pending, setPending] = useState<PendingVerificationItem[]>([]);
@@ -26,9 +27,10 @@ export function VerifierView() {
     setBusy("load");
     setError(null);
     try {
-      // ⚠ The mock does not validate the secret (the real DEMO_ADMIN_SECRET isn't on
-      // Akif's machine). Against the real API this call may return 401 UNAUTHORIZED —
-      // showing "wrong secret" to the user is enough in that case.
+      // The secret is held in module memory inside realApi and attached as the
+      // x-demo-admin-secret header on every verifier call. It never leaves this
+      // session — no code, env, or localStorage.
+      setDemoAdminSecret(adminSecret.trim());
       const res = await api.listPendingVerifications();
       setPending(res.pending);
       setUnlocked(true);
@@ -50,6 +52,7 @@ export function VerifierView() {
       });
       if (res.state === "APPROVED") {
         setLastAttestation(res.attestation);
+        onApproved(propertyId, res.attestation);
       }
       setPending((prev) => prev.filter((p) => p.propertyId !== propertyId));
       setTamperResult("idle");

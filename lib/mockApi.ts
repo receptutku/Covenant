@@ -314,7 +314,7 @@ async function decideVerification(input: DecideVerificationInput): Promise<Decid
     const reason = input.reason ?? "Not specified";
     property.state = "REJECTED";
     property.rejectReason = reason;
-    pushEvent(property, "OWNERSHIP_REJECTED", {});
+    pushEvent(property, "OWNERSHIP_REJECTED", { reason });
     return { propertyId: property.propertyId, state: "REJECTED", reason };
   }
 

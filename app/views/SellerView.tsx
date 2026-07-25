@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { api, ApiRequestError } from "@/lib/apiClient";
-import { peekMockAttestation, peekMockPropertyState, peekMockRejectReason } from "@/lib/mockApi";
+import { devIssueSellerSession } from "@/lib/realApi";
+import type { Attestation } from "@/lib/api-types";
 import { StepIndicator } from "@/app/components/common/StepIndicator";
 import { ActionCard } from "@/app/components/common/ActionCard";
 import { StatusBadge } from "@/app/components/common/StatusBadge";
@@ -26,7 +27,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export function SellerView() {
+export function SellerView({ attestations }: { attestations: Record<string, Attestation> }) {
   const [session, setSession] = useState<{ token: string; expiresAt: string } | null>(null);
   const [propertyId, setPropertyId] = useState("PROP-002");
   const [displayName, setDisplayName] = useState("Alfama 2BR");
@@ -37,6 +38,10 @@ export function SellerView() {
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ApiRequestError | Error | null>(null);
+
+  // Dev-only bypass (Phase A7 not done yet — no real World IDKit widget).
+  const [devSecret, setDevSecret] = useState("");
+  const [showDevBypass, setShowDevBypass] = useState(false);
 
   const [documentRoot, setDocumentRoot] = useState<string | null>(null);
   const [propertyState, setPropertyState] = useState<string | null>(null);
@@ -54,6 +59,19 @@ export function SellerView() {
         proof: { success: true, nullifier_hash: `mock-seller-${crypto.randomUUID()}` },
         action: "onboard-seller",
       });
+      setSession({ token: res.sellerSessionToken, expiresAt: res.expiresAt });
+    } catch (e) {
+      setError(e as ApiRequestError);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDevBypass() {
+    setBusy("selfie");
+    setError(null);
+    try {
+      const res = await devIssueSellerSession(devSecret);
       setSession({ token: res.sellerSessionToken, expiresAt: res.expiresAt });
     } catch (e) {
       setError(e as ApiRequestError);
@@ -96,12 +114,29 @@ export function SellerView() {
     setBusy("refresh");
     setError(null);
     try {
-      // The contract has no dedicated "getPropertyStatus" call; the mock reads it
-      // straight from the store. With the real API we'll need to clarify with Recep
-      // how to learn this (the audit timeline? a dedicated endpoint?) — Phase A6 note.
-      const state = peekMockPropertyState(propertyId);
-      setPropertyState(state ?? null);
-      if (state === "REJECTED") setRejectReason(peekMockRejectReason(propertyId) ?? null);
+      // The contract has no dedicated "getPropertyStatus" call. /api/audit is real
+      // and public, so we derive the current state from the latest relevant HCS
+      // event instead of a mock-only shortcut.
+      const audit = await api.readAudit(propertyId);
+      const latest = [...audit.events].reverse();
+      if (latest.some((e) => e.eventType === "PROPERTY_TOKEN_CREATED")) {
+        setPropertyState("TOKENIZED");
+      } else if (latest.some((e) => e.eventType === "OWNERSHIP_APPROVED")) {
+        setPropertyState("APPROVED");
+      } else if (latest.some((e) => e.eventType === "OWNERSHIP_REJECTED")) {
+        setPropertyState("REJECTED");
+        const rejectedEvent = latest.find((e) => e.eventType === "OWNERSHIP_REJECTED");
+        setRejectReason((rejectedEvent?.payload?.reason as string | undefined) ?? "Not specified");
+      } else if (attestations[propertyId]) {
+        // The verifier has already approved in this session but the HCS message
+        // has not surfaced on the mirror node yet (a few seconds of lag). The
+        // signed attestation in hand is the stronger signal, so trust it.
+        setPropertyState("APPROVED");
+      } else if (latest.some((e) => e.eventType === "PROPERTY_SUBMITTED")) {
+        setPropertyState("PENDING_REVIEW");
+      }
+    } catch (e) {
+      setError(e as ApiRequestError);
     } finally {
       setBusy(null);
     }
@@ -111,7 +146,7 @@ export function SellerView() {
     setBusy("tokenize");
     setError(null);
     try {
-      const attestation = peekMockAttestation(propertyId);
+      const attestation = attestations[propertyId];
       if (!attestation) {
         throw new Error("No attestation yet — wait for verifier approval and refresh the status.");
       }
@@ -134,19 +169,58 @@ export function SellerView() {
 
       <ActionCard title="1. Selfie Check (World ID)" description="No liveness proof, no document upload — the seller gate.">
         {!session ? (
-          <button
-            onClick={handleSelfie}
-            disabled={busy === "selfie"}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
-          >
-            {busy === "selfie" ? "Verifying..." : "Verify with Selfie (World ID)"}
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={handleSelfie}
+              disabled={busy === "selfie"}
+              className="w-fit rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+            >
+              {busy === "selfie" ? "Verifying..." : "Verify with Selfie (World ID)"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDevBypass((v) => !v)}
+              className="w-fit text-xs text-zinc-500 underline"
+            >
+              {showDevBypass ? "Hide dev bypass" : "Dev: skip Selfie (testing only)"}
+            </button>
+
+            {showDevBypass && (
+              <div className="flex items-center gap-2 rounded-md border border-dashed border-amber-400 p-2">
+                <input
+                  type="password"
+                  value={devSecret}
+                  onChange={(e) => setDevSecret(e.target.value)}
+                  placeholder="admin secret"
+                  className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                />
+                <button
+                  onClick={handleDevBypass}
+                  disabled={busy === "selfie" || !devSecret}
+                  className="rounded-md bg-amber-500 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  {busy === "selfie" ? "..." : "Issue dev session"}
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
-          <StatusBadge status="success">Session active · valid until {new Date(session.expiresAt).toLocaleTimeString()}</StatusBadge>
+          <div className="flex items-center gap-2">
+            <StatusBadge status="success">Session active · valid until {new Date(session.expiresAt).toLocaleTimeString()}</StatusBadge>
+            <button
+              type="button"
+              onClick={() => setSession(null)}
+              className="rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700"
+            >
+              Reset session
+            </button>
+          </div>
         )}
         <PrivacyNote>
           Only session active/expiry info is shown. The raw World nullifier or proof is never kept on screen or in
-          localStorage.
+          localStorage. The dev bypass above skips real World verification entirely — testing only, never in the
+          real demo.
         </PrivacyNote>
       </ActionCard>
 

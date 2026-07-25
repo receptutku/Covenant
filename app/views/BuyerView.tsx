@@ -12,10 +12,14 @@ import { StepIndicator } from "@/app/components/common/StepIndicator";
 
 const STEPS = ["ENS", "Association", "Identity/KYC", "Buy", "Evidence"];
 
-const BUYER_ACCOUNTS: Record<string, string> = {
-  buyer1: "0.0.200200",
-  buyer2: "0.0.300300",
-  nokyc: "0.0.400400",
+// Real Hedera account IDs for the three demo buyers. These are public IDs, not
+// keys — the private keys stay on the backend. Set them in .env.local so the
+// demo does not depend on hand-typed values; the fields below stay editable as
+// an escape hatch if an account is re-created mid-event.
+const DEFAULT_BUYER_ACCOUNTS: Record<string, string> = {
+  buyer1: process.env.NEXT_PUBLIC_BUYER1_ACCOUNT_ID ?? "",
+  buyer2: process.env.NEXT_PUBLIC_BUYER2_ACCOUNT_ID ?? "",
+  nokyc: process.env.NEXT_PUBLIC_NOKYC_ACCOUNT_ID ?? "",
 };
 
 export function BuyerView() {
@@ -23,6 +27,8 @@ export function BuyerView() {
   const [buyerKey, setBuyerKey] = useState<"buyer1" | "buyer2" | "nokyc">("buyer1");
   const [mode, setMode] = useState<"primary" | "secondary" | "nokyc">("primary");
   const [amount, setAmount] = useState(100);
+  const [accounts, setAccounts] = useState(DEFAULT_BUYER_ACCOUNTS);
+  const buyerAccountId = accounts[buyerKey];
 
   const [ens, setEns] = useState<ReadEnsResult | null>(null);
   const [kyc, setKyc] = useState<VerifyBuyerResult | null>(null);
@@ -59,7 +65,6 @@ export function BuyerView() {
     setBusy("kyc");
     setError(null);
     try {
-      const buyerAccountId = BUYER_ACCOUNTS[buyerKey];
       // World ID 4.0: fetch the signed RP context first, then hand it to IDKit
       // (wired for real in Phase A7 — the mock just discards the return value).
       await api.getRpSignature({ action: "verify-buyer", signal: `${propertyId}:${buyerAccountId}` });
@@ -85,7 +90,7 @@ export function BuyerView() {
       const res = await api.buy({
         propertyId,
         mode,
-        buyerAccountId: BUYER_ACCOUNTS[buyerKey],
+        buyerAccountId,
         amount,
       });
       setBuyResult(res);
@@ -176,10 +181,27 @@ export function BuyerView() {
               }`}
             >
               <input type="radio" className="hidden" checked={buyerKey === k} onChange={() => setBuyerKey(k)} disabled={!ens} />
-              {k} ({BUYER_ACCOUNTS[k]})
+              {k}
             </label>
           ))}
         </div>
+
+        <label className="mt-3 block text-xs text-zinc-500">
+          Hedera account for {buyerKey}
+          <input
+            value={buyerAccountId}
+            onChange={(e) => setAccounts((prev) => ({ ...prev, [buyerKey]: e.target.value }))}
+            placeholder="0.0.xxxxxx"
+            className="mt-1 block w-full rounded-md border border-zinc-300 px-2 py-1 font-mono text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          />
+        </label>
+        {!buyerAccountId && (
+          <p className="mt-1 text-xs text-amber-600">
+            No account ID configured. Set NEXT_PUBLIC_{buyerKey.toUpperCase()}_ACCOUNT_ID in .env.local, or paste the
+            ID above.
+          </p>
+        )}
+
         <p className="mt-2 text-xs text-zinc-500">
           Being associated does not grant a right to buy — only KYC does.
         </p>
