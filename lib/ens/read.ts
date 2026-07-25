@@ -1,6 +1,7 @@
 import { createPublicClient, http } from 'viem'
 import { sepolia } from 'viem/chains'
 import { ApiError } from '../errors'
+import { setEnsCacheInvalidator } from './write'
 import {
   RECORD_KEYS,
   REQUIRED_COMMON,
@@ -52,6 +53,12 @@ function cache(): Map<string, CacheEntry> {
   if (!g[CACHE_KEY]) g[CACHE_KEY] = new Map()
   return g[CACHE_KEY]
 }
+
+// Let the writer drop a cached entry the instant it changes a record, so a fresh
+// tokenization is visible immediately instead of after the TTL.
+setEnsCacheInvalidator((name) => {
+  cache().delete(name)
+})
 
 function parentName(): string {
   return process.env.ENS_PARENT_NAME?.trim() || 'pprevlisbon.eth'

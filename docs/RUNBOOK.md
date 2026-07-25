@@ -25,13 +25,31 @@ If preflight reports a failure, its message names the fix. The three usual ones:
 ## Mid-demo failures, ranked by likelihood
 
 ### 1. Server restarted / state gone
-Everything on-chain survives; only server memory is lost.
+
+Measured, not estimated — this drill was actually run:
+
+| What | Reality |
+|---|---|
+| Server back up | **~2 seconds** |
+| Audit timeline | **Survives fully** (88 events still there) — it is read from Mirror, not memory |
+| On-chain tokens, escrows, ENS records | Survive — nothing on-chain is affected |
+| Property store | **Emptied.** `/api/health` shows `seededProperties: 0` |
+
+**Seeded scenes do NOT work immediately after a restart.** Both `PROP-001` and `PROP-002`
+return `PROPERTY_NOT_FOUND` until the store is repopulated. Recovery:
+
 ```bash
 npm run dev
-curl -s -X POST localhost:3000/api/seed
+curl -s -X POST localhost:3000/api/seed     # ~9s — restores PROP-001
 ```
-~10 seconds. The seeded scenes (secondary fee, KYC rejection) work immediately.
-The live property (PROP-002) restarts from the Selfie step — narrate it as a fresh run.
+
+After that, the seeded scenes (secondary fee, KYC rejection) work again.
+
+The live property (`PROP-002`) is **not** restored by seed — its token still exists
+on-chain, but the server no longer knows about it, so `/api/buy` refuses it. Redo the
+live flow from the Selfie step and narrate it as a fresh run. That is fine: the flow
+takes under a minute, and re-tokenizing now updates the ENS record automatically (see
+below), so nothing goes out of sync.
 
 ### 2. Mirror timeline looks empty or stale
 Mirror trails consensus by a few seconds; a just-written event may not be there yet.
@@ -80,9 +98,21 @@ no tunnel involved.
 
 ---
 
+## ENS keeps itself in sync (as of the hardening pass)
+
+Every live run mints a **new** token for `PROP-002`. Previously the ENS record kept
+pointing at the previous run's token, so the discovery panel and the transfer disagreed —
+a contradiction visible on screen. `/api/tokenize` now publishes the new token id to ENS
+in the background and drops the cached config, so the next resolve is already correct.
+Verified: a fresh mint moved the record from `0.0.9734945` to `0.0.9736806` within ~20s.
+
+Nothing to do during the demo. If the ENS write fails (Sepolia down), it is logged and
+`/api/ens-read` degrades to `env-fallback` on its own.
+
 ## Hard rules
 
-- **Never** run `npm run golden` on demo day — it re-mints the seed token and desyncs ENS.
+- **Never** run `npm run golden` on demo day — it re-mints the SEED token (PROP-001) and
+  that one is not auto-published; you would have to run `npm run ens:write` after it.
 - **Never** upload documents against `PROP-001` (the API blocks it, but don't try).
 - After `demo-final` is tagged: bug fixes only, nothing new.
 - The last 90 minutes before submission: one person pushes, the other reviews.

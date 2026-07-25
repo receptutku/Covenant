@@ -7,6 +7,7 @@ import { putProperty } from '@/lib/store'
 import { HCS_EVENTS } from '@/lib/types'
 import { assertAttestationValid } from '@/lib/verifier/attestation'
 import { withLock } from '@/lib/lock'
+import { publishTokenIdInBackground } from '@/lib/ens/write'
 
 /**
  * The security gate between a reviewed property and an on-chain asset.
@@ -42,6 +43,13 @@ export const POST = handler(async (request) => {
     })
 
     putProperty({ ...property, state: 'TOKENIZED', tokenId: token.tokenId })
+
+    // Publish the new token id to ENS so discovery matches the chain. Every live run
+    // mints a NEW token for the same property, so a record written once goes stale on the
+    // next rehearsal — which showed up as the discovery panel resolving one token id
+    // while the transfer underneath used another. Fired in the background: the mint is
+    // already final, and a Sepolia hiccup must not fail a successful tokenization.
+    publishTokenIdInBackground(property.propertyId, token.tokenId)
 
     await submitEventSafe(HCS_EVENTS.PROPERTY_TOKEN_CREATED, property.propertyId, {
       tokenId: token.tokenId,
