@@ -91,16 +91,26 @@ Before any rehearsal or the demo itself: `npm run preflight` must end with
 the deliberately-unKYC'd account and ENS↔chain consistency). Crisis procedures live in
 [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
-Then `POST /api/seed` (or use the UI's seed control) before any rehearsal — it restores
-PROP-001, tops buyer1 back up for the secondary-fee scene, and re-associates nokyc
-**without** granting it KYC.
+Then seed before any rehearsal — it registers PROP-001 (sale showcase) and PROP-003
+(rental), tops buyer1 back up by recycling shares from buyer2 rather than draining the
+treasury, and re-associates nokyc **without** granting it KYC. It also re-prepares every
+other tokenized property, so a token minted during a live run is demo-ready too.
+
+```bash
+curl -s -X POST localhost:3000/api/seed -H "x-demo-admin-secret: $DEMO_ADMIN_SECRET"
+```
+
+Seed and reset require the admin secret: a `POST` with no custom header is a CORS simple
+request, so without it any page on any machine that can reach this server could wipe the
+demo mid-run.
 
 Test suite (all against real testnet, all assert in code):
 
 ```bash
-npm run tamper        # 6/6 doctored attestations blocked
-npm run e2e:sale      # 20/20 — full sale flow over HTTP, real token minted
-npm run e2e:rental    # 25/25 — escrow lock/settle/expire with consensus-node balance checks
+npm run tamper        # doctored attestations blocked (6 cases)
+npm run merkle        # commitment scheme property tests (no network needed)
+npm run e2e:sale      # full sale flow over HTTP, real token minted
+npm run e2e:rental    # escrow lock/settle/expire, balances read from a consensus node
 ```
 
 ## The minimal verifier boundary
@@ -131,7 +141,7 @@ threshold signature.
 | World proof | Verified server-side, then dropped | **Never** |
 | Buyer/tenant name, DOB, income figure | Never collected | **Never** |
 | Eligibility predicate *result* (booleans) | HCS | Yes |
-| Seller session token | `randomBytes(32)`, 30 min TTL | Returned once; unrelated to World data |
+| Seller session token | `randomBytes(32)`, 30 min TTL (`SELLER_SESSION_TTL_MINUTES`) | Returned once; unrelated to World data |
 | Token ids, tx ids, account ids | HCS / Mirror / ENS | Yes — public by design |
 | All private keys & secrets | Server env only | **Never** (frontend machine gets a URL, not keys) |
 
@@ -141,18 +151,26 @@ caught one real mistake during development — which is exactly why it exists.
 
 ## ENS config discovery
 
-Nothing about a property's token, audit topic, or verifier key is baked into this
-application. Each property has a subname whose text records *are* its live protocol
-config:
+No token id, topic id or verifier key is hard-coded in this application's source. Each
+property has a subname whose text records carry its protocol config, and the buyer flow
+resolves them live from Sepolia before it will show you anything:
 
 ```
-prop-002.pprevlisbon.eth
-  com.pprev.mode                     SALE
-  com.pprev.hedera.propertyTokenId   0.0.9734945
+prop-002.pprevlisbon.eth          (values are illustrative — the token id
+  com.pprev.mode                     SALE          changes on every mint, see below)
+  com.pprev.hedera.propertyTokenId   0.0.97xxxxx
   com.pprev.hedera.auditTopicId      0.0.9734777
   com.pprev.verifier.publicKey       302a3005...
   com.pprev.policy.hash / .version   0x0597... / 1
 ```
+
+**What this is and is not.** Discovery is genuinely live: `/api/ens-read` resolves these
+records on every request, `/api/tokenize` publishes each newly minted token id back to
+ENS, and a client learns which token a property uses by asking Sepolia rather than by
+trusting us. What it is *not*, in this build, is the settlement path — transfers read the
+token from the server's own record, not from ENS. Making ENS authoritative for settlement
+is the honest next step; claiming it already is would be an overstatement, and the code is
+right there to check.
 
 Rental properties carry a different field set (`com.pprev.rental.escrowAccount`,
 `.reqDeposit` — and no token, deliberately); clients branch on `com.pprev.mode`.

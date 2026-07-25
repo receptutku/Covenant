@@ -1,6 +1,6 @@
 import { handler, jsonResponse, parseBody } from '@/lib/api'
 import { ApiError } from '@/lib/errors'
-import { getDemoAccount, hashscanUrl } from '@/lib/hedera/client'
+import { demoAccountFor, hashscanUrl, isReservedNokycAccount } from '@/lib/hedera/client'
 import { associateToken, grantKyc } from '@/lib/hedera/token'
 import { submitEventSafe } from '@/lib/hedera/topic'
 import { requireProperty } from '@/lib/property'
@@ -42,7 +42,7 @@ export const POST = handler(async (request) => {
   // proof does not attest to a Hedera account, so nothing binds this grant to the person
   // who verified. Closing that needs account-binding (the account signing a nonce folded
   // into the World action context) and is on the roadmap.
-  if (body.buyerAccountId === process.env.NOKYC_ID?.trim()) {
+  if (isReservedNokycAccount(body.buyerAccountId)) {
     throw new ApiError(
       'KYC_DENIED',
       'This account is reserved as the unverified counter-example and cannot be granted KYC.',
@@ -84,16 +84,6 @@ export const POST = handler(async (request) => {
     hashscanUrl: hashscanUrl('transaction', kycTxId),
   })
 })
-
-/** Returns the demo key pair for an account id, or null if we do not hold its key. */
-function demoAccountFor(accountId: string) {
-  for (const name of ['BUYER1', 'BUYER2', 'NOKYC'] as const) {
-    if (process.env[`${name}_ID`]?.trim() === accountId) {
-      return getDemoAccount(name)
-    }
-  }
-  return null
-}
 
 async function associateIfPossible(
   tokenId: string,

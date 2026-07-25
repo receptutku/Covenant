@@ -56,6 +56,7 @@ function fakePdf(label: string): string {
 }
 
 function ok(condition: boolean, message: string): void {
+  checks += 1
   if (condition) {
     console.log(`  ✅ ${message}`)
   } else {
@@ -65,6 +66,7 @@ function ok(condition: boolean, message: string): void {
 }
 
 let failures = 0
+let checks = 0
 
 async function main() {
   console.log(`▶ SALE end-to-end against ${BASE}`)
@@ -228,7 +230,7 @@ async function main() {
     console.error(`❌ ${failures} assertion(s) failed.`)
     process.exit(1)
   }
-  console.log('✅ SALE flow passes end-to-end over HTTP.')
+  console.log(`✅ SALE flow passes end-to-end over HTTP. (${checks}/${checks} checks)`)
 }
 
 main().catch((error) => {

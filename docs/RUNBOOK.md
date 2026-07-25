@@ -6,11 +6,20 @@ The crisis card. Read once before the first rehearsal; keep open during the demo
 
 ## Before going on stage (5 minutes)
 
+Export the admin secret once, into the shell you will be using under pressure. Every
+recovery command below assumes it is set — reaching for `.env.local` mid-incident is how
+a two-minute fix becomes a five-minute one.
+
 ```bash
-npm run preflight        # must end with "All green. Go."
+export SECRET=$(grep '^DEMO_ADMIN_SECRET=' .env.local | cut -d= -f2)
+
 npm run dev              # server on :3000
-curl -s -X POST localhost:3000/api/seed   # restores PROP-001 + tops buyer1 up
+curl -s -X POST localhost:3000/api/seed -H "x-demo-admin-secret: $SECRET"
+npm run preflight        # must end with "All green. Go."
 ```
+
+`preflight` runs last on purpose: it checks that the server is up and the store is
+populated, so running it before the seed reports a failure you were about to fix anyway.
 
 If preflight reports a failure, its message names the fix. The three usual ones:
 
@@ -32,7 +41,7 @@ protection work, and it means rehearsal #2 is refused at step one with
 Between rehearsals that reuse the same World identity:
 
 ```bash
-curl -s -X POST localhost:3000/api/dev/clear-replay -H "x-demo-admin-secret: <secret>"
+curl -s -X POST localhost:3000/api/dev/clear-replay -H "x-demo-admin-secret: $SECRET"
 ```
 
 Clears only the proof history. Seeded properties, sessions and on-chain state are
@@ -53,7 +62,7 @@ Measured, not estimated — this drill was actually run:
 | What | Reality |
 |---|---|
 | Server back up | **~2 seconds** |
-| Audit timeline | **Survives fully** (88 events still there) — it is read from Mirror, not memory |
+| Audit timeline | **Survives fully** — it is read from Mirror, not memory |
 | On-chain tokens, escrows, ENS records | Survive — nothing on-chain is affected |
 | Property store | **Emptied.** `/api/health` shows `seededProperties: 0` |
 
@@ -62,7 +71,7 @@ return `PROPERTY_NOT_FOUND` until the store is repopulated. Recovery:
 
 ```bash
 npm run dev
-curl -s -X POST localhost:3000/api/seed     # ~9s — restores PROP-001
+curl -s -X POST localhost:3000/api/seed -H "x-demo-admin-secret: $SECRET"   # ~10s
 ```
 
 After that, the seeded scenes (secondary fee, KYC rejection) work again.
@@ -87,7 +96,7 @@ the resolution path is live again as soon as the RPC answers." Nothing to do.
 ### 4. World simulator won't cooperate
 The dev-session endpoint exists for exactly this (dev-only + admin secret):
 ```bash
-curl -s -X POST localhost:3000/api/dev/session -H "x-demo-admin-secret: <secret>"
+curl -s -X POST localhost:3000/api/dev/session -H "x-demo-admin-secret: $SECRET"
 ```
 **Be honest on stage:** "The World simulator is unavailable right now — this session was
 issued without a proof, which the server logs loudly. The verification path itself is the
@@ -111,7 +120,7 @@ and carry on; the whole cycle takes under a minute.
 ### 5. A transfer fails with INSUFFICIENT_TOKEN_BALANCE
 buyer1 ran out of shares (each rehearsal moves 100 to buyer2 permanently).
 ```bash
-curl -s -X POST localhost:3000/api/seed
+curl -s -X POST localhost:3000/api/seed -H "x-demo-admin-secret: $SECRET"
 ```
 
 ### 6. Tunnel died (only relevant while Akif tests remotely)

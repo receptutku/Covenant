@@ -70,11 +70,41 @@ export function getDemoAccount(name: 'BUYER1' | 'BUYER2' | 'NOKYC'): HederaAccou
  * and a refund destination we never debited is a fund-drain path rather than a refund.
  */
 export function demoAccountFor(accountId: string): HederaAccount | null {
-  const wanted = accountId.trim()
+  const wanted = normalizeAccountId(accountId)
+  if (!wanted) return null
   for (const name of ['BUYER1', 'BUYER2', 'NOKYC'] as const) {
-    if (process.env[`${name}_ID`]?.trim() === wanted) return getDemoAccount(name)
+    if (normalizeAccountId(process.env[`${name}_ID`]) === wanted) return getDemoAccount(name)
   }
   return null
+}
+
+/**
+ * Canonical form of an account id, or null if it is not one.
+ *
+ * Comparing account ids as raw strings is unsafe, and it was: `0.0.09734743` and
+ * `0.0.9734743` are the SAME account — Hedera normalises away leading zeros — but they are
+ * different strings. Anything that gates on a string match can therefore be walked past
+ * with a padded id while the SDK happily resolves it to the account you were guarding.
+ *
+ * That is not hypothetical here. The guard keeping the nokyc account un-KYC'd used a
+ * string compare, and there is no revoke endpoint: one padded request would have granted
+ * it KYC and permanently ended the demo's strongest scene. Every account comparison goes
+ * through this now.
+ */
+export function normalizeAccountId(accountId: string | undefined): string | null {
+  const text = accountId?.trim()
+  if (!text) return null
+  try {
+    return AccountId.fromString(text).toString()
+  } catch {
+    return null
+  }
+}
+
+/** True when the id refers to the account reserved as the unverified counter-example. */
+export function isReservedNokycAccount(accountId: string): boolean {
+  const nokyc = normalizeAccountId(process.env.NOKYC_ID)
+  return nokyc !== null && normalizeAccountId(accountId) === nokyc
 }
 
 const CLIENT_KEY = Symbol.for('pprev.hedera.client.v1')

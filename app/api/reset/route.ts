@@ -1,4 +1,4 @@
-import { assertDevelopmentOnly, handler, jsonResponse } from '@/lib/api'
+import { assertDemoControl, handler, jsonResponse } from '@/lib/api'
 import { resetStore } from '@/lib/store'
 
 /**
@@ -8,8 +8,8 @@ import { resetStore } from '@/lib/store'
  * only clears the server's view, so a rehearsal can start from a clean slate without
  * burning new testnet resources.
  */
-export const POST = handler(async () => {
-  assertDevelopmentOnly()
+export const POST = handler(async (request) => {
+  assertDemoControl(request)
   resetStore()
   return jsonResponse({ reset: true })
 })

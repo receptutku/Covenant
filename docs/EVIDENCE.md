@@ -74,7 +74,7 @@ stale is still refused.
 ## The full sale flow over HTTP
 
 `npm run e2e:sale` drives the same endpoints the frontend calls, against a running server.
-20 assertions, including the privacy ones (no nullifier, no salt, no document bytes in any
+It prints its own assertion count on completion, including the privacy checks (no nullifier, no salt, no document bytes in any
 response).
 
 | Step | Assertion |
@@ -120,7 +120,7 @@ every entry is independently verifiable:
 
 ## Rental escrow (real HBAR, both settlement paths)
 
-`npm run e2e:rental` — 25 assertions against consensus-node balances:
+`npm run e2e:rental` — asserts against consensus-node balances (it prints its own count):
 
 | Path | Evidence | Link |
 |---|---|---|

@@ -30,6 +30,7 @@ const DEPOSIT = 5
 const SHORT_LOCK_SECONDS = 12
 
 let failures = 0
+let checks = 0
 
 type ApiResult = { status: number; body: Record<string, unknown> }
 
@@ -56,6 +57,7 @@ async function call(
 }
 
 function ok(condition: boolean, message: string): void {
+  checks += 1
   console.log(`  ${condition ? '✅' : '❌'} ${message}`)
   if (!condition) failures += 1
 }
@@ -326,7 +328,7 @@ async function main() {
     console.error(`❌ ${failures} assertion(s) failed.`)
     process.exit(1)
   }
-  console.log('✅ RENTAL escrow passes: settle refunds cleanly, expire refunds and penalises.')
+  console.log(`✅ RENTAL escrow passes: settle refunds cleanly, expire refunds and penalises. (${checks}/${checks} checks)`)
 }
 
 main().catch((error) => {

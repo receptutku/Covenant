@@ -112,7 +112,17 @@ export const kycSchema = z.object({
 export const buySchema = z.object({
   propertyId: propertyIdSchema,
   mode: z.enum(['primary', 'secondary', 'nokyc']),
-  buyerAccountId: accountIdSchema.optional(),
+  // An empty string is treated as "not provided" rather than as a malformed account id.
+  //
+  // A form field that has never been filled in sends `""`, and `secondary`/`nokyc` ignore
+  // this field entirely — their parties are fixed demo accounts. Without this coercion
+  // both scenes returned `Invalid field: buyerAccountId` for a value the handler was
+  // never going to read. Rejecting input the endpoint does not use is pedantry that
+  // shows up on stage as a broken button.
+  buyerAccountId: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    accountIdSchema.optional(),
+  ),
   amount: z.number().int().positive().max(1000).default(100),
 })
 

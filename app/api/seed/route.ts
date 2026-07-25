@@ -1,4 +1,4 @@
-import { assertDevelopmentOnly, handler, jsonResponse } from '@/lib/api'
+import { assertDemoControl, handler, jsonResponse } from '@/lib/api'
 import { ApiError } from '@/lib/errors'
 import { getDemoAccount, getOperator } from '@/lib/hedera/client'
 import { associateToken, grantKyc, tokenBalance, transferShares } from '@/lib/hedera/token'
@@ -30,8 +30,8 @@ import type { Property } from '@/lib/types'
 /** Shares buyer1 must hold for the secondary-transfer scene to run. */
 const SECONDARY_SCENE_SHARES = 100
 
-export const POST = handler(async () => {
-  assertDevelopmentOnly()
+export const POST = handler(async (request) => {
+  assertDemoControl(request)
   const startedAt = Date.now()
 
   const tokenId = process.env.SEED_TOKEN_ID?.trim()

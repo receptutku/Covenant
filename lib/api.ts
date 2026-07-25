@@ -113,3 +113,21 @@ export function assertDevelopmentOnly(): void {
     throw new ApiError('PROPERTY_NOT_FOUND', 'This endpoint is disabled in production.')
   }
 }
+
+/**
+ * Guards an endpoint that can destroy or rebuild demo state.
+ *
+ * `/api/seed` and `/api/reset` had only the NODE_ENV check, which is not a guard at all
+ * once the server is reachable from another machine — and ours is, deliberately, so the
+ * frontend can call it across the network. A `POST` with no custom header is a CORS
+ * "simple request", so any web page open on any machine that can route to this server
+ * could wipe the store mid-demo, or replay seed until the treasury is drained. At a
+ * hackathon that is a room full of people on one network.
+ *
+ * The admin secret is the same one the verifier panel already uses, so this costs the
+ * operator nothing they were not already carrying.
+ */
+export function assertDemoControl(request: Request): void {
+  assertDevelopmentOnly()
+  requireAdminSecret(request)
+}

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { assertDevelopmentOnly, handler, jsonResponse, parseBody, requireAdminSecret } from '@/lib/api'
 import { ApiError } from '@/lib/errors'
-import { demoAccountFor, hashscanUrl } from '@/lib/hedera/client'
+import { demoAccountFor, hashscanUrl, isReservedNokycAccount } from '@/lib/hedera/client'
 import { associateToken, grantKyc } from '@/lib/hedera/token'
 import { submitEventSafe } from '@/lib/hedera/topic'
 import { requireProperty } from '@/lib/property'
@@ -44,7 +44,7 @@ export const POST = handler(async (request) => {
     )
   }
 
-  if (body.buyerAccountId === process.env.NOKYC_ID?.trim()) {
+  if (isReservedNokycAccount(body.buyerAccountId)) {
     throw new ApiError(
       'KYC_DENIED',
       'This account is reserved as the unverified counter-example and cannot be granted KYC.',
