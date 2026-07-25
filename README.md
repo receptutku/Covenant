@@ -41,12 +41,24 @@ to, because we never received one.
 The demo runs as three columns on one screen — Seller, Verifier, Buyer — because the whole
 argument is that these are three different parties with three different amounts of trust.
 
-| | |
-|---|---|
-| `docs/img/01-overview.png` | The three roles side by side |
-| `docs/img/02-kyc-denied.png` | Hedera refusing a transfer to an unverified wallet |
-| `docs/img/03-secondary-fee.png` | 100 sent, 2 taken by the network, 98 received |
-| `docs/img/04-tamper.png` | A doctored attestation rejected at tokenize |
+![The three roles side by side](docs/img/01-overview.png)
+
+**Hedera refuses the transfer, not us.** Buying with the deliberately un-KYC'd account fails
+at the network level. `code` is ours; `ACCOUNT_KYC_NOT_GRANTED_FOR_TOKEN` is Hedera's.
+
+![A transfer to an unverified wallet, rejected by consensus](docs/img/02-kyc-denied.png)
+
+**The fee belongs to the token.** A secondary transfer debits the sender 100, the network
+takes 2 against an immutable fee schedule, and the recipient receives 98. Sent and received
+are shown separately because quoting one number for both would contradict Mirror Node's own
+transfer list for the same transaction.
+
+![100 sent, 2 taken as protocol fee, 98 received](docs/img/03-secondary-fee.png)
+
+**An attestation is only worth its signature.** Corrupt one field of an approved attestation
+and tokenization refuses it.
+
+![A doctored attestation rejected at tokenize](docs/img/04-tamper.png)
 
 ## How it works
 
