@@ -12,7 +12,17 @@ import './env'
 
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
 const ADMIN_SECRET = process.env.DEMO_ADMIN_SECRET!
-const PROPERTY_ID = 'PROP-002'
+
+/**
+ * `--no-reset` runs against a throwaway property and leaves the store untouched.
+ *
+ * The default run wipes state, which is correct for a clean check but destructive while
+ * someone is testing the UI against the same server — it would delete their session and
+ * seeded properties mid-flow. The isolated mode exists so the full pipeline can be
+ * verified during integration without interrupting anyone.
+ */
+const NO_RESET = process.argv.includes('--no-reset')
+const PROPERTY_ID = NO_RESET ? `PROP-E2E-${Date.now().toString().slice(-6)}` : 'PROP-002'
 
 type ApiResult = { status: number; body: Record<string, unknown> }
 
@@ -57,10 +67,16 @@ function ok(condition: boolean, message: string): void {
 let failures = 0
 
 async function main() {
-  console.log(`▶ SALE end-to-end against ${BASE}\n`)
+  console.log(`▶ SALE end-to-end against ${BASE}`)
+  console.log(
+    NO_RESET
+      ? `  isolated mode — property ${PROPERTY_ID}, existing state untouched\n`
+      : `  property ${PROPERTY_ID}, store will be reset\n`,
+  )
 
-  // Start from a clean store so repeated runs are deterministic.
-  await call('/api/reset', { method: 'POST' })
+  // Start from a clean store so repeated runs are deterministic — unless we were asked to
+  // leave whatever is there alone.
+  if (!NO_RESET) await call('/api/reset', { method: 'POST' })
 
   // ── 1. Seller session ──────────────────────────────────────────────────────
   //
@@ -154,7 +170,15 @@ async function main() {
 
   const pending = await call('/api/verifier/pending', { adminSecret: true })
   const queue = pending.body.pending as Record<string, unknown>[]
-  ok(queue?.length === 1, `queue holds 1 property (got ${queue?.length})`)
+  // In isolated mode other properties may legitimately be awaiting review, so assert that
+  // OURS is queued rather than that it is the only one.
+  const queued = queue?.some((entry) => entry.propertyId === PROPERTY_ID)
+  ok(
+    NO_RESET ? Boolean(queued) : queue?.length === 1,
+    NO_RESET
+      ? `${PROPERTY_ID} is in the review queue (queue size ${queue?.length})`
+      : `queue holds 1 property (got ${queue?.length})`,
+  )
   ok(!JSON.stringify(pending.body).includes('dataBase64'), 'queue exposes metadata only')
 
   // ── 6. Approval produces a signed attestation ──────────────────────────────
