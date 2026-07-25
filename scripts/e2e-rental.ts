@@ -19,7 +19,13 @@ import { closeClient, getClient } from '../lib/hedera/client'
 
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
 const ADMIN_SECRET = process.env.DEMO_ADMIN_SECRET!
-const PROPERTY_ID = 'PROP-003'
+/**
+ * `--no-reset` runs against a throwaway property and leaves the store untouched, so the
+ * escrow paths can be verified while someone is testing the UI against the same server.
+ * The default run resets, which is correct for a clean check and destructive otherwise.
+ */
+const NO_RESET = process.argv.includes('--no-reset')
+const PROPERTY_ID = NO_RESET ? `PROP-RENT-${Date.now().toString().slice(-6)}` : 'PROP-003'
 const DEPOSIT = 5
 const SHORT_LOCK_SECONDS = 12
 
@@ -127,13 +133,49 @@ async function listAndEngage(
   return { listingId, engage }
 }
 
-async function main() {
-  console.log(`▶ RENTAL escrow end-to-end against ${BASE}\n`)
+/**
+ * Polls the audit timeline until every expected event has appeared, or the budget runs out.
+ *
+ * Mirror is a replica and trails consensus by seconds. The last event in this run —
+ * RENTAL_EXPIRED — is written moments before the assertion reads it, so a single immediate
+ * query failed intermittently while the system was entirely correct. A test that fails at
+ * random is worse than no test: it teaches you to ignore red, which is precisely the habit
+ * that lets a real failure through.
+ *
+ * Returns whatever it has when the budget expires, so a genuinely missing event still fails
+ * the assertion rather than hanging.
+ */
+async function waitForEvents(expected: string[], timeoutMs = 30_000): Promise<Set<string>> {
+  const deadline = Date.now() + timeoutMs
+  let seen = new Set<string>()
 
-  await call('/api/reset', { method: 'POST' })
-  // Seed restores PROP-001 in TOKENIZED state — needed for the "a tokenized property
-  // cannot be rented" guard below, which would otherwise fail as PROPERTY_NOT_FOUND.
-  await call('/api/seed', { method: 'POST' })
+  while (Date.now() < deadline) {
+    const audit = await call(`/api/audit?propertyId=${PROPERTY_ID}`)
+    seen = new Set((audit.body.events as { eventType: string }[] | undefined)?.map((e) => e.eventType) ?? [])
+    if (expected.every((event) => seen.has(event))) return seen
+    await new Promise((resolve) => setTimeout(resolve, 3_000))
+  }
+
+  console.log('  (Mirror did not catch up within the budget — reporting what it has)')
+  return seen
+}
+
+async function main() {
+  console.log(`▶ RENTAL escrow end-to-end against ${BASE}`)
+  console.log(
+    NO_RESET
+      ? `  isolated mode — property ${PROPERTY_ID}, existing state untouched\n`
+      : `  property ${PROPERTY_ID}, store will be reset\n`,
+  )
+
+  if (!NO_RESET) {
+    await call('/api/reset', { method: 'POST' })
+    // Seed restores PROP-001 in TOKENIZED state — needed for the "a tokenized property
+    // cannot be rented" guard below, which would otherwise fail as PROPERTY_NOT_FOUND.
+    // In isolated mode PROP-001 is already there, and re-seeding would move shares around
+    // underneath whoever is testing.
+    await call('/api/seed', { method: 'POST' })
+  }
   const sellerSessionToken = await newSession()
   await prepareApprovedProperty(sellerSessionToken)
 
@@ -263,16 +305,17 @@ async function main() {
   // silently: every endpoint returned 200, and the missing step only showed up in the
   // timeline. Asserting on the public record catches that class of bug.
   console.log('\nAUDIT — timeline read back from Mirror Node')
-  const audit = await call(`/api/audit?propertyId=${PROPERTY_ID}`)
-  const seen = new Set((audit.body.events as { eventType: string }[]).map((e) => e.eventType))
 
-  for (const expected of [
+  const expectedEvents = [
     'RENTAL_LISTED',
     'RENTAL_APPLICATION',
     'RENTAL_ENGAGED',
     'RENTAL_SETTLED',
     'RENTAL_EXPIRED',
-  ]) {
+  ]
+  const seen = await waitForEvents(expectedEvents)
+
+  for (const expected of expectedEvents) {
     ok(seen.has(expected), `${expected} present on-chain`)
   }
 

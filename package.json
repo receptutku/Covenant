@@ -21,7 +21,8 @@
     "preflight": "tsx scripts/preflight.ts",
     "fund": "tsx scripts/fund-demo.ts",
     "merkle": "tsx scripts/merkle-test.ts",
-    "e2e:sale:safe": "tsx scripts/e2e-sale.ts --no-reset"
+    "e2e:sale:safe": "tsx scripts/e2e-sale.ts --no-reset",
+    "e2e:rental:safe": "tsx scripts/e2e-rental.ts --no-reset"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",
