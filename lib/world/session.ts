@@ -22,7 +22,26 @@ import type { SellerSession } from '../types'
  * the nullifier for every other flow.
  */
 
-const SESSION_TTL_MS = 30 * 60 * 1000
+const DEFAULT_SESSION_TTL_MINUTES = 30
+
+/**
+ * Session lifetime, overridable with `SELLER_SESSION_TTL_MINUTES`.
+ *
+ * 30 minutes is the designed default and stays that way — it is short enough that a leaked
+ * token stops being useful quickly. It is configurable because the rental flow can outlive
+ * it in a way the sale flow cannot: `list → apply → engage → wait out the lock window →
+ * settle` holds one session across the whole window, so a 20-minute window plus setup time
+ * can expire the session before the landlord is allowed to settle, stranding a deposit
+ * that is already locked on-chain.
+ *
+ * Raise it for a long rehearsal day rather than editing this file mid-demo.
+ */
+function sessionTtlMs(): number {
+  const configured = Number(process.env.SELLER_SESSION_TTL_MINUTES)
+  const minutes =
+    Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_SESSION_TTL_MINUTES
+  return minutes * 60 * 1000
+}
 
 function hmacSecret(): string {
   const secret = process.env.NULLIFIER_HMAC_SECRET
@@ -66,7 +85,7 @@ export function issueSellerSession(): SellerSession {
     // ever sees, and it is a lookup key — not a credential derived from identity.
     token: randomBytes(32).toString('hex'),
     createdAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
+    expiresAt: new Date(now.getTime() + sessionTtlMs()).toISOString(),
   }
   putSellerSession(session)
   return session
