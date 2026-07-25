@@ -3,11 +3,20 @@ import { isWorldConfigured } from '@/lib/world/verify'
 import { listProperties } from '@/lib/store'
 
 /**
- * Liveness for the frontend's "backend up" indicator.
+ * Liveness plus the public identifiers the frontend would otherwise have to hard-code.
  *
- * Deliberately cheap: no chain calls, no Mirror reads — this may be polled every few
- * seconds and must never become a reason the server feels slow. Deep verification is
- * `npm run preflight`'s job, run by a human before going on stage.
+ * The demo account ids are published here for the same reason the protocol config lives in
+ * ENS rather than in source: a hard-coded identifier is a lie waiting to happen. The
+ * frontend carried invented account ids left over from the mock, which produced
+ * TOKEN_NOT_ASSOCIATED failures that looked like a backend bug — the accounts in the
+ * request simply did not exist. Fetching them removes that whole class of drift.
+ *
+ * These are ACCOUNT IDS ONLY. They are public by nature: anyone can read their balances on
+ * HashScan. No key, secret, or session material is exposed here.
+ *
+ * Deliberately cheap: no chain calls, no Mirror reads. This may be polled every few
+ * seconds and must never be why the server feels slow. Deep verification is
+ * `npm run preflight`, run by a human before going on stage.
  */
 export const GET = () =>
   jsonResponse({
@@ -17,4 +26,16 @@ export const GET = () =>
     ens: process.env.ENS_PARENT_NAME?.trim() || null,
     auditTopicId: process.env.AUDIT_TOPIC_ID?.trim() || null,
     seededProperties: listProperties().length,
+    demoAccounts: {
+      // The KYC-verified buyer, and the tenant in the rental flow.
+      buyer1: process.env.BUYER1_ID?.trim() || null,
+      // The secondary-market counterparty — the fee scene needs a holder who is not the
+      // treasury, since the treasury is exempt from its own fee.
+      buyer2: process.env.BUYER2_ID?.trim() || null,
+      // Associated with every property token but never granted KYC. This is the account
+      // the network refuses, and that refusal is the point — do not send it to /api/kyc.
+      nokyc: process.env.NOKYC_ID?.trim() || null,
+      // Treasury, seller, landlord and escrow holder in the demo's role mapping.
+      operator: process.env.OPERATOR_ID?.trim() || null,
+    },
   })

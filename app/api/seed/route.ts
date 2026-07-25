@@ -2,7 +2,8 @@ import { assertDevelopmentOnly, handler, jsonResponse } from '@/lib/api'
 import { ApiError } from '@/lib/errors'
 import { getDemoAccount, getOperator } from '@/lib/hedera/client'
 import { associateToken, grantKyc, tokenBalance, transferShares } from '@/lib/hedera/token'
-import { putProperty } from '@/lib/store'
+import { prepareTokenForDemo } from '@/lib/hedera/demo-setup'
+import { listProperties, putProperty } from '@/lib/store'
 import type { Property } from '@/lib/types'
 
 /**
@@ -101,11 +102,33 @@ export const POST = handler(async () => {
 
   const replenished = await replenishSecondaryScene(tokenId, buyer1, buyer2)
 
+  // Prepare every OTHER tokenized property too, not just the seed one.
+  //
+  // A property tokenized during a live run gets a brand new token, and tokens minted
+  // before this preparation existed have no relationships at all — which is how the
+  // no-KYC scene ended up returning TOKEN_NOT_ASSOCIATED_TO_ACCOUNT on the live property
+  // while working fine on the seeded one. Seed is the "make the demo ready" button, so it
+  // should mean every property, not one.
+  const repaired: string[] = []
+  for (const property of listProperties()) {
+    if (!property.tokenId || property.tokenId === tokenId) continue
+    try {
+      await prepareTokenForDemo(property.tokenId)
+      repaired.push(property.propertyId)
+    } catch (error) {
+      console.warn(
+        `[seed] Could not prepare ${property.propertyId} (${property.tokenId}):`,
+        error instanceof Error ? error.message : error,
+      )
+    }
+  }
+
   return jsonResponse({
     seeded: true,
     properties: ['PROP-001', 'PROP-003'],
     tokenId,
     replenished,
+    preparedTokens: repaired,
     elapsedMs: Date.now() - startedAt,
   })
 })
