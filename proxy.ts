@@ -35,6 +35,10 @@ export function proxy(request: NextRequest) {
 
   const response = NextResponse.next()
   response.headers.set('Access-Control-Allow-Origin', origin)
+  // Because the allowed origin varies per request, any shared cache must key on it.
+  // Without this a proxy could serve one origin's response — and its
+  // Access-Control-Allow-Origin — to a different origin.
+  response.headers.set('Vary', 'Origin')
   for (const [key, value] of Object.entries(CORS_HEADERS)) {
     response.headers.set(key, value)
   }

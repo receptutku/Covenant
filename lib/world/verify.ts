@@ -177,12 +177,11 @@ export async function verifyWorldProof(
   const body = (await response.json().catch(() => ({}))) as VerifyResponse
 
   if (!response.ok || body.success !== true) {
-    // The body explains why verification failed. It is useful on the server but must not
-    // reach the client, since it can echo proof internals back to the caller.
+    // Only the machine-readable code is logged. The `detail` string is written by World
+    // to describe what was wrong with the submitted proof, so it can quote proof internals
+    // back at us — and this file's own contract is that the proof never reaches a log.
     console.error(
-      `[world] Verification failed for "${action}" (${response.status}):`,
-      body.code ?? '',
-      body.detail ?? '',
+      `[world] Verification failed for "${action}" (${response.status}): ${body.code ?? 'no code'}`,
     )
     throw new ApiError('WORLD_PROOF_INVALID', 'World could not verify this proof.')
   }

@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { ZodError, type ZodType } from 'zod'
 import { ApiError, type ErrorCode } from './errors'
@@ -99,12 +100,18 @@ export function requireAdminSecret(request: Request): void {
   }
 }
 
-/** A length difference still leaks, but the content comparison runs in constant time. */
+/**
+ * Constant-time comparison, including across differing lengths.
+ *
+ * The previous version returned early on a length mismatch and hand-rolled the XOR loop,
+ * which leaked the secret's length and gave no real constant-time guarantee — a JS engine
+ * is free to optimise that loop. Hashing both sides first makes the compared buffers a
+ * fixed 32 bytes whatever the inputs were, so length tells an observer nothing.
+ */
 function timingSafeEqualStrings(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
+  const left = createHash('sha256').update(a, 'utf8').digest()
+  const right = createHash('sha256').update(b, 'utf8').digest()
+  return timingSafeEqual(left, right)
 }
 
 /** `/api/seed` and `/api/reset` are only available in development. */

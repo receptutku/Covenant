@@ -140,11 +140,14 @@ export function assertTokenizable(property: Property): void {
         'Ownership review is still pending for this property.',
       )
     case 'REJECTED':
+      // The reviewer's free text is deliberately NOT echoed here. `/api/tokenize` takes no
+      // session and no secret, so anything in this message is readable by anyone who can
+      // reach the server — and a rejection reason is exactly where a human writes
+      // "the deed lists a date of birth that does not match". The seller reads the full
+      // text from `/api/property`, which requires their session.
       throw new ApiError(
         'OWNERSHIP_REJECTED',
-        property.rejectionReason
-          ? `Ownership was rejected: ${property.rejectionReason}`
-          : 'Ownership was rejected for this property.',
+        'Ownership was rejected for this property. The seller can read the reviewer’s reason from their own dashboard.',
       )
     default:
       throw new ApiError(

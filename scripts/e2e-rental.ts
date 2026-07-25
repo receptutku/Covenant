@@ -171,12 +171,12 @@ async function main() {
   )
 
   if (!NO_RESET) {
-    await call('/api/reset', { method: 'POST' })
+    await call('/api/reset', { method: 'POST', adminSecret: true })
     // Seed restores PROP-001 in TOKENIZED state — needed for the "a tokenized property
     // cannot be rented" guard below, which would otherwise fail as PROPERTY_NOT_FOUND.
     // In isolated mode PROP-001 is already there, and re-seeding would move shares around
     // underneath whoever is testing.
-    await call('/api/seed', { method: 'POST' })
+    await call('/api/seed', { method: 'POST', adminSecret: true })
   }
   const sellerSessionToken = await newSession()
   await prepareApprovedProperty(sellerSessionToken)

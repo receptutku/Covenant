@@ -78,7 +78,7 @@ async function main() {
 
   // Start from a clean store so repeated runs are deterministic — unless we were asked to
   // leave whatever is there alone.
-  if (!NO_RESET) await call('/api/reset', { method: 'POST' })
+  if (!NO_RESET) await call('/api/reset', { method: 'POST', adminSecret: true })
 
   // ── 1. Seller session ──────────────────────────────────────────────────────
   //
