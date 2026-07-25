@@ -214,7 +214,15 @@ export interface AssessedFee {
 export interface BuyResult {
   transferred: true;
   tokenId: string;
+  /** Debited from the sender. */
   amount: number;
+  /**
+   * Credited to the recipient: `amount − Σ assessedCustomFees`. The 2% fractional
+   * fee is INCLUSIVE, so a secondary transfer of 100 lands as 98. Show this next
+   * to the recipient — quoting `amount` there contradicts Mirror Node's own
+   * transfer list for the same transaction.
+   */
+  netAmount: number;
   from: string;
   to: string;
   mode: BuyMode;
@@ -254,6 +262,28 @@ export interface SeedResult {
 }
 export interface ResetResult {
   reset: true;
+}
+
+// ── health ───────────────────────────────────────────────────────────────
+/**
+ * Public identifiers, no auth, no chain calls. `demoAccounts` is the only
+ * trustworthy source for the buyer/nokyc account ids — hard-coding them once
+ * cost us an hour of `TOKEN_NOT_ASSOCIATED` failures against accounts that did
+ * not exist. Any entry may be `null` if the matching env var is unset.
+ */
+export interface HealthResult {
+  ok: boolean;
+  time: string;
+  world: "configured" | "dev-fallback";
+  ens: string | null;
+  auditTopicId: string | null;
+  seededProperties: number;
+  demoAccounts: {
+    buyer1: string | null;
+    buyer2: string | null;
+    nokyc: string | null;
+    operator: string | null;
+  };
 }
 
 // ── rental ───────────────────────────────────────────────────────────────
@@ -347,6 +377,7 @@ export interface PprevApiClient {
   buy(input: BuyInput): Promise<BuyResult>;
   readEns(input: ReadEnsInput): Promise<ReadEnsResult>;
   readAudit(propertyId: string): Promise<ReadAuditResult>;
+  health(): Promise<HealthResult>;
   seed(): Promise<SeedResult>;
   reset(): Promise<ResetResult>;
   rentalList(input: RentalListInput): Promise<RentalListResult>;

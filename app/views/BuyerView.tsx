@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiRequestError } from "@/lib/apiClient";
+import { devClearReplay, devGrantKyc } from "@/lib/realApi";
 import type { ReadEnsResult, BuyResult, VerifyBuyerResult, SeedResult } from "@/lib/api-types";
 import { ActionCard } from "@/app/components/common/ActionCard";
 import { StatusBadge } from "@/app/components/common/StatusBadge";
@@ -12,28 +13,41 @@ import { StepIndicator } from "@/app/components/common/StepIndicator";
 
 const STEPS = ["ENS", "Association", "Identity/KYC", "Buy", "Evidence"];
 
-// Real Hedera account IDs for the three demo buyers. These are public IDs, not
-// keys — the private keys stay on the backend. Set them in .env.local so the
-// demo does not depend on hand-typed values; the fields below stay editable as
-// an escape hatch if an account is re-created mid-event.
-const DEFAULT_BUYER_ACCOUNTS: Record<string, string> = {
-  buyer1: process.env.NEXT_PUBLIC_BUYER1_ACCOUNT_ID ?? "",
-  buyer2: process.env.NEXT_PUBLIC_BUYER2_ACCOUNT_ID ?? "",
-  nokyc: process.env.NEXT_PUBLIC_NOKYC_ACCOUNT_ID ?? "",
-};
+// Account ids are fetched from GET /api/health on mount, never hard-coded: the
+// ids differ per environment and per .env, and an invented id fails as
+// TOKEN_NOT_ASSOCIATED, which reads like a backend bug when the account simply
+// does not exist. The fields stay editable only as a mid-event escape hatch.
+const EMPTY_ACCOUNTS: Record<string, string> = { buyer1: "", buyer2: "", nokyc: "" };
 
 export function BuyerView() {
   const [propertyId, setPropertyId] = useState("PROP-002");
   const [buyerKey, setBuyerKey] = useState<"buyer1" | "buyer2" | "nokyc">("buyer1");
   const [mode, setMode] = useState<"primary" | "secondary" | "nokyc">("primary");
   const [amount, setAmount] = useState(100);
-  const [accounts, setAccounts] = useState(DEFAULT_BUYER_ACCOUNTS);
+  const [accounts, setAccounts] = useState(EMPTY_ACCOUNTS);
   const buyerAccountId = accounts[buyerKey];
+
+  useEffect(() => {
+    api
+      .health()
+      .then((h) =>
+        setAccounts({
+          buyer1: h.demoAccounts.buyer1 ?? "",
+          buyer2: h.demoAccounts.buyer2 ?? "",
+          nokyc: h.demoAccounts.nokyc ?? "",
+        }),
+      )
+      .catch(() => {
+        /* leave the fields empty — the inline warning below explains the state */
+      });
+  }, []);
 
   const [ens, setEns] = useState<ReadEnsResult | null>(null);
   const [kyc, setKyc] = useState<VerifyBuyerResult | null>(null);
   const [buyResult, setBuyResult] = useState<BuyResult | null>(null);
   const [seedResult, setSeedResult] = useState<SeedResult | null>(null);
+  const [adminSecret, setAdminSecret] = useState("");
+  const [clearedCount, setClearedCount] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ApiRequestError | Error | null>(null);
 
@@ -46,6 +60,20 @@ export function BuyerView() {
     try {
       const res = await api.seed();
       setSeedResult(res);
+    } catch (e) {
+      setError(e as ApiRequestError);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleClearReplay() {
+    setBusy("replay");
+    setError(null);
+    setClearedCount(null);
+    try {
+      const res = await devClearReplay(adminSecret);
+      setClearedCount(res.cleared);
     } catch (e) {
       setError(e as ApiRequestError);
     } finally {
@@ -79,6 +107,19 @@ export function BuyerView() {
         proof: { success: true, nullifier_hash: `mock-buyer-${buyerKey}-${crypto.randomUUID()}` },
         action: "verify-buyer",
       });
+      setKyc(res);
+    } catch (e) {
+      setError(e as ApiRequestError);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doDevKyc() {
+    setBusy("kyc");
+    setError(null);
+    try {
+      const res = await devGrantKyc(adminSecret, { propertyId, buyerAccountId });
       setKyc(res);
     } catch (e) {
       setError(e as ApiRequestError);
@@ -130,6 +171,36 @@ export function BuyerView() {
             Seeded {seedResult.properties.join(", ")} · token {seedResult.tokenId} · {seedResult.elapsedMs}ms
           </p>
         )}
+
+        {/*
+          Between rehearsals this is the difference between rehearsing twice and
+          rehearsing once: a World nullifier is derived from (identity, app,
+          action), so the second Selfie Check of the day is refused as
+          WORLD_PROOF_REPLAY at step one, before anything can be shown.
+        */}
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+          <input
+            type="password"
+            value={adminSecret}
+            onChange={(e) => setAdminSecret(e.target.value)}
+            placeholder="admin secret"
+            className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          />
+          <button
+            onClick={handleClearReplay}
+            disabled={busy === "replay" || !adminSecret}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-zinc-700"
+          >
+            {busy === "replay" ? "Clearing..." : "Clear World replay guard"}
+          </button>
+          {clearedCount !== null && (
+            <span className="text-xs text-emerald-600">{clearedCount} proof digest(s) forgotten.</span>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-zinc-500">
+          Run this between rehearsals. It forgets used World proofs only — seeded properties, sessions and chain
+          state survive.
+        </p>
       </ActionCard>
 
       <ActionCard title="0. Pick a property" description="The live flow is PROP-002; golden scenes run on PROP-001.">
@@ -207,8 +278,7 @@ export function BuyerView() {
         </label>
         {!buyerAccountId && (
           <p className="mt-1 text-xs text-amber-600">
-            No account ID configured. Set NEXT_PUBLIC_{buyerKey.toUpperCase()}_ACCOUNT_ID in .env.local, or paste the
-            ID above.
+            /api/health returned no id for {buyerKey}. Check the backend&apos;s .env, or paste the id above.
           </p>
         )}
 
@@ -223,13 +293,23 @@ export function BuyerView() {
         disabledReason={!ens ? "Read the ENS config first." : buyerKey === "nokyc" ? "nokyc is deliberately never granted KYC (golden scene)." : undefined}
       >
         {buyerKey !== "nokyc" && (
-          <button
-            onClick={doIdentityKyc}
-            disabled={!ens || busy === "kyc"}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
-          >
-            {busy === "kyc" ? "Verifying..." : "Grant KYC via Identity Check"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={doIdentityKyc}
+              disabled={!ens || busy === "kyc"}
+              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+            >
+              {busy === "kyc" ? "Verifying..." : "Grant KYC via Identity Check"}
+            </button>
+            <button
+              onClick={doDevKyc}
+              disabled={!ens || !adminSecret || !buyerAccountId || busy === "kyc"}
+              title="Requires the admin secret entered in Demo helpers above."
+              className="rounded-md border border-dashed border-amber-400 px-3 py-1.5 text-xs text-amber-700 disabled:opacity-50 dark:text-amber-400"
+            >
+              Dev: grant without World proof
+            </button>
+          </div>
         )}
         {kyc && (
           <div className="mt-2 flex flex-col gap-1">
@@ -272,14 +352,36 @@ export function BuyerView() {
         {buyResult && (
           <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm dark:border-emerald-900 dark:bg-emerald-950">
             <p className="font-medium text-emerald-700 dark:text-emerald-300">
-              ✅ Transfer complete: {buyResult.amount} shares, {buyResult.from} → {buyResult.to}
+              ✅ Transfer complete: {buyResult.from} → {buyResult.to}
             </p>
+            {/*
+              Sent and received are shown separately because the 2% fee is
+              INCLUSIVE — quoting the sent amount next to the recipient would
+              contradict Mirror Node's own transfer list for this transaction.
+            */}
+            <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-md bg-white/60 p-2 dark:bg-black/20">
+                <dt className="text-[10px] uppercase tracking-wide text-emerald-700/70">Sent</dt>
+                <dd className="font-mono text-base font-semibold">{buyResult.amount}</dd>
+              </div>
+              <div className="rounded-md bg-white/60 p-2 dark:bg-black/20">
+                <dt className="text-[10px] uppercase tracking-wide text-emerald-700/70">Protocol fee</dt>
+                <dd className="font-mono text-base font-semibold">
+                  {buyResult.assessedCustomFees.reduce((sum, f) => sum + f.amount, 0)}
+                </dd>
+              </div>
+              <div className="rounded-md bg-white/60 p-2 dark:bg-black/20">
+                <dt className="text-[10px] uppercase tracking-wide text-emerald-700/70">Received</dt>
+                <dd className="font-mono text-base font-semibold">{buyResult.netAmount}</dd>
+              </div>
+            </dl>
             {buyResult.assessedCustomFees.length > 0 ? (
-              <p className="mt-1 text-xs text-emerald-600">
-                Fee charged: {buyResult.assessedCustomFees[0].amount} shares → {buyResult.assessedCustomFees[0].collectorAccountId}
+              <p className="mt-2 text-xs text-emerald-600">
+                The 2% fee was assessed by Hedera itself and routed to{" "}
+                {buyResult.assessedCustomFees[0].collectorAccountId} — the app never moves it.
               </p>
             ) : (
-              <p className="mt-1 text-xs text-emerald-600">No fee (treasury exemption — expected behavior).</p>
+              <p className="mt-2 text-xs text-emerald-600">No fee (treasury exemption — expected behavior).</p>
             )}
             <EvidenceLink href={buyResult.hashscanUrl} label="View on HashScan" />
           </div>

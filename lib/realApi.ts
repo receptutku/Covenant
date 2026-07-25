@@ -30,6 +30,7 @@ import type {
   ReadEnsInput,
   ReadEnsResult,
   ReadAuditResult,
+  HealthResult,
   SeedResult,
   ResetResult,
   RentalListInput,
@@ -105,6 +106,33 @@ export function devIssueSellerSession(adminSecret: string): Promise<OnboardSelle
   return post<OnboardSellerResult>("/api/dev/session", {}, { "x-demo-admin-secret": adminSecret });
 }
 
+/**
+ * ⚠ DEV/TEST ONLY. The buyer counterpart to `/api/dev/session`: grants KYC
+ * without a World proof. Refuses the nokyc account by design — granting it KYC
+ * would permanently kill golden scene 1, and there is no revoke endpoint.
+ */
+export function devGrantKyc(
+  adminSecret: string,
+  input: { propertyId: string; buyerAccountId: string },
+): Promise<VerifyBuyerResult> {
+  return post<VerifyBuyerResult>("/api/dev/kyc", input, { "x-demo-admin-secret": adminSecret });
+}
+
+/**
+ * ⚠ DEV/TEST ONLY. Forgets used World proof digests.
+ * A World nullifier is derived from (identity, app, action), so it is the SAME
+ * value every time one person repeats one check: rehearsal 1 passes, rehearsal 2
+ * dies at step one with WORLD_PROOF_REPLAY. Run this between rehearsals. Unlike
+ * `/api/reset` it keeps seeded properties, sessions and chain state.
+ */
+export function devClearReplay(adminSecret: string): Promise<{ cleared: number; warning: string }> {
+  return post<{ cleared: number; warning: string }>(
+    "/api/dev/clear-replay",
+    {},
+    { "x-demo-admin-secret": adminSecret },
+  );
+}
+
 export const realApi: PprevApiClient = {
   onboardSeller: (input: OnboardSellerInput) => post<OnboardSellerResult>("/api/onboard", input),
 
@@ -132,6 +160,8 @@ export const realApi: PprevApiClient = {
 
   readAudit: (propertyId: string) =>
     get<ReadAuditResult>(`/api/audit?propertyId=${encodeURIComponent(propertyId)}`),
+
+  health: () => get<HealthResult>("/api/health"),
 
   seed: () => post<SeedResult>("/api/seed", {}),
 

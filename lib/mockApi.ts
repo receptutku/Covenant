@@ -1,4 +1,4 @@
-// CONTRACT-VERSION: 3
+// CONTRACT-VERSION: 4
 //
 // PPREV — Mock API layer.
 // A client-side simulation that mirrors docs/API.md exactly. As Recep's real
@@ -37,6 +37,7 @@ import type {
   ReadEnsInput,
   ReadEnsResult,
   ReadAuditResult,
+  HealthResult,
   SeedResult,
   ResetResult,
   RentalListInput,
@@ -56,6 +57,7 @@ const MOCK_TOPIC_ID = "0.0.111111";
 const MOCK_OPERATOR = "0.0.100100"; // treasury / escrow / verifier-signed operations
 const MOCK_BUYER1 = "0.0.200200";
 const MOCK_BUYER2 = "0.0.300300";
+const MOCK_NOKYC_ACCOUNT = "0.0.400400";
 const MOCK_VERIFIER_PUBLIC_KEY =
   "302a300506032b6570032100" + "aa11bb22cc33dd44ee55ff6600112233445566778899aabbccddeeff0011";
 const ATTESTATION_TTL_MS = 60 * 60 * 1000; // 1 hour, matches .env.example ATTESTATION_TTL_SECONDS
@@ -459,6 +461,8 @@ async function buy(input: BuyInput): Promise<BuyResult> {
     transferred: true,
     tokenId: property.tokenId,
     amount: input.amount,
+    // Fee is inclusive: the sender is debited `amount`, the recipient credited this.
+    netAmount: input.amount - fee,
     from,
     to,
     mode: input.mode,
@@ -520,6 +524,24 @@ async function readAudit(propertyId: string): Promise<ReadAuditResult> {
     links: {
       topic: hashscanTopic(MOCK_TOPIC_ID),
       ...(property?.tokenId ? { token: hashscanToken(property.tokenId) } : {}),
+    },
+  };
+}
+
+async function health(): Promise<HealthResult> {
+  await delay(80);
+  return {
+    ok: true,
+    time: new Date().toISOString(),
+    world: "dev-fallback",
+    ens: "pprevlisbon.eth",
+    auditTopicId: MOCK_TOPIC_ID,
+    seededProperties: store.properties.size,
+    demoAccounts: {
+      buyer1: MOCK_BUYER1,
+      buyer2: MOCK_BUYER2,
+      nokyc: MOCK_NOKYC_ACCOUNT,
+      operator: MOCK_OPERATOR,
     },
   };
 }
@@ -728,6 +750,7 @@ export const mockApi: PprevApiClient = {
   buy,
   readEns,
   readAudit,
+  health,
   seed,
   reset,
   rentalList,
