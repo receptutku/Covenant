@@ -8,6 +8,7 @@ import { buySchema } from '@/lib/schemas'
 import { HCS_EVENTS } from '@/lib/types'
 import { withLock } from '@/lib/lock'
 import { withReplaySuppression } from '@/lib/idempotency'
+import { checkEnsTokenId } from '@/lib/ens/consistency'
 
 /**
  * Share transfer — and the two compliance scenes that carry the demo.
@@ -68,6 +69,24 @@ async function doTransfer(body: {
     )
   }
 
+  // ENS gets a vote before any share moves.
+  //
+  // Only one outcome blocks: a record naming a token our operator did not create, which is a
+  // record someone repointed. Unreachable does not block — handing a Sepolia outage the power
+  // to stop a Hedera transfer is worse than the problem it solves — and neither does a stale
+  // record, because /api/tokenize republishes in the background and a buy seconds after a
+  // mint legitimately still sees the previous value.
+  const ens = await checkEnsTokenId(property.propertyId, property.tokenId)
+  if (ens.status === 'mismatch') {
+    throw new ApiError(
+      'ENS_CONFIG_MISMATCH',
+      `The ENS record for this property names token ${ens.ensTokenId}, which this protocol ` +
+        'did not create. No shares were moved.',
+      { ensTokenId: ens.ensTokenId, expectedTokenId: property.tokenId },
+    )
+  }
+  const ensCheck = ens.status
+
   const { from, to } = resolveParties(body.mode, body.buyerAccountId)
 
   // Just-in-time repair. Tokenize prepares demo accounts in the background, but that
@@ -116,6 +135,7 @@ async function doTransfer(body: {
     mode: body.mode,
     transactionId: result.transactionId,
     assessedFeeTotal: feeTotal,
+    ensCheck,
   })
 
   return {
@@ -131,6 +151,10 @@ async function doTransfer(body: {
     // UI should not say "2% protocol fee" when this is set.
     feeFloorApplied,
     effectiveFeeRate: Number(effectiveFeeRate.toFixed(4)),
+    // Whether ENS agreed this is the property's token. `match` is the only value that lets
+    // the UI say ENS confirmed anything: `unavailable` covers the env fallback, which is our
+    // own configuration read back to us.
+    ensCheck,
     from: from.accountId.toString(),
     to,
     mode: body.mode,

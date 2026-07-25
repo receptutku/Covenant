@@ -1,4 +1,4 @@
-CONTRACT-VERSION: 5
+CONTRACT-VERSION: 6
 
 # PPREV API Contract
 
@@ -8,6 +8,16 @@ CONTRACT-VERSION: 5
 > **Versioning rule:** any breaking change bumps the `CONTRACT-VERSION` marker above by 1, adds
 > `BREAKING` to the commit message, and is communicated to the other side. The
 > `// CONTRACT-VERSION: N` comment on the first line of `lib/mockApi.ts` must match that number.
+
+### Changes in v6 (BREAKING)
+
+| What | v5 | v6 |
+|---|---|---|
+| `buy` response | — | adds **`ensCheck`**: `"match" \| "stale" \| "unavailable"` |
+| error codes | — | adds **`ENS_CONFIG_MISMATCH`** (422), thrown by `/api/buy` |
+
+ENS is now consulted before any share moves, and it can stop the transfer. Only one outcome
+blocks — a record naming a token this protocol did not create. See `POST /api/buy`.
 
 ### Changes in v5 (BREAKING)
 
@@ -101,6 +111,7 @@ WORLD_PROOF_REPLAY
 
 # ENS
 ENS_CONFIG_INCOMPLETE
+ENS_CONFIG_MISMATCH
 
 # Rental (RENTAL)
 RENTAL_NOT_APPROVED
@@ -720,6 +731,18 @@ supply of a property token), otherwise `INVALID_INPUT`.
 > `transactionId` belongs to the earlier click and is real; do not narrate it as a new
 > transfer. A genuine second purchase 30 seconds later goes through normally.
 
+> **`ensCheck` is the ENS verdict, taken before any share moved.** `match` means the property's
+> ENS record names exactly the token being transferred — this is the only value that lets the UI
+> say ENS confirmed anything. `stale` means the record names an older token of *ours*, which
+> happens legitimately for a few seconds after a mint because `/api/tokenize` republishes in the
+> background. `unavailable` means ENS could not be consulted, **including** the env fallback —
+> our own configuration read back to us, which must never be presented as ENS agreeing.
+>
+> A record naming a token this protocol did not create never reaches the response: the transfer
+> is refused with `ENS_CONFIG_MISMATCH` and nothing moves. Unreachable does not block, because
+> giving a Sepolia outage the power to stop a Hedera transfer is worse than the problem it
+> solves. `npm run test:ens-guard` exercises all four outcomes against the live records.
+
 > **Do not print "2% fee" unless `feeFloorApplied` is `false`.** The on-chain fee is
 > `max(1, floor(amount × 2%))` and shares are whole units, so the floor dominates below 50:
 > 10 shares are charged 1 (10%), and **1 share is charged 1 — the recipient receives 0**.
@@ -763,7 +786,8 @@ deliberately un-KYC'd.
 > prominently on screen and carries the "Hedera rejected this at the network level" narrative.
 
 **Errors:** `PROPERTY_NOT_FOUND` (404 — unknown property, **or** a property with no token
-yet), `KYC_DENIED` (422), `TOKEN_NOT_ASSOCIATED` (422), `INVALID_INPUT` (400)
+yet), `KYC_DENIED` (422), `TOKEN_NOT_ASSOCIATED` (422), `ENS_CONFIG_MISMATCH` (422 — the ENS
+record names a token this protocol did not create; no shares moved), `INVALID_INPUT` (400)
 
 > `INVALID_INPUT` covers three cases here, all 400: a malformed body, `mode: "primary"` sent
 > without a `buyerAccountId`, and — with `hederaStatus: "INSUFFICIENT_TOKEN_BALANCE"` — a

@@ -1,5 +1,5 @@
 // PPREV — Shared API types (mock and real implementations both use these).
-// Source of truth: docs/API.md — CONTRACT-VERSION: 5
+// Source of truth: docs/API.md — CONTRACT-VERSION: 6
 // Keep this in sync with the version number at the top of docs/API.md.
 
 export type PropertyState =
@@ -33,6 +33,7 @@ export type ApiErrorCode =
   | "WORLD_PROOF_INVALID"
   | "WORLD_PROOF_REPLAY"
   | "ENS_CONFIG_INCOMPLETE"
+  | "ENS_CONFIG_MISMATCH"
   | "RENTAL_NOT_APPROVED"
   | "RENTAL_NOT_ENGAGED"
   | "LOCK_EXPIRED"
@@ -276,6 +277,17 @@ export interface BuyResult {
    * **Do not render the string "2% fee" unless this is `false`.**
    */
   feeFloorApplied: boolean;
+  /**
+   * Whether ENS agreed this is the property's token, checked before any share moved.
+   *
+   * `match` is the ONLY value that lets the UI claim ENS confirmed anything. `unavailable`
+   * includes the env fallback — our own configuration read back to us — and `stale` means the
+   * record names an older token of ours, which happens legitimately in the seconds after a
+   * mint because /api/tokenize republishes in the background. A record naming a token this
+   * protocol did not create does not appear here: it throws ENS_CONFIG_MISMATCH instead, and
+   * no shares move.
+   */
+  ensCheck: "match" | "stale" | "unavailable";
   /**
    * Present and `true` when this request repeated the same `(propertyId, mode, amount)`
    * within 30 seconds and was NOT executed again. `transactionId` is the earlier click's —

@@ -1,4 +1,4 @@
-// CONTRACT-VERSION: 5
+// CONTRACT-VERSION: 6
 //
 // PPREV — Mock API layer.
 // A client-side simulation that mirrors docs/API.md exactly. As Recep's real
@@ -528,6 +528,9 @@ async function buy(input: BuyInput): Promise<BuyResult> {
     // and the effective rate is not 2% — at 1 share the recipient gets nothing. The mock
     // reproduces it so the UI is built against the same edge the chain will show.
     effectiveFeeRate: input.amount > 0 ? Number((fee / input.amount).toFixed(4)) : 0,
+    // The mock has no ENS to consult. `unavailable` is the honest answer — claiming `match`
+    // would teach the UI to render "ENS confirmed this" for a check that never ran.
+    ensCheck: "unavailable" as const,
     feeFloorApplied: fee > 0 && fee / input.amount > FRACTIONAL_FEE_BPS / 10000 + 1e-9,
     from,
     to,
