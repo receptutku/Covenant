@@ -192,13 +192,13 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold">Seller</h2>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-end justify-between gap-3 border-b border-[var(--border)] pb-4">
+        <h2 className="text-[22px] font-semibold tracking-[-0.03em]">Seller</h2>
         <StepIndicator steps={STEPS} activeIndex={step} />
       </div>
 
-      <ActionCard title="1. Selfie Check (World ID)" description="No liveness proof, no document upload — the seller gate.">
+      <ActionCard title="1. Selfie Check (World ID)" description="No liveness proof, no document upload — the seller gate." active={step === 0}>
         {!session ? (
           <div className="flex flex-col gap-2">
             <WorldVerifyButton
@@ -212,7 +212,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
             <button
               type="button"
               onClick={() => setShowDevBypass((v) => !v)}
-              className="w-fit text-xs text-zinc-500 underline"
+              className="w-fit text-xs text-[var(--muted)] underline"
             >
               {showDevBypass ? "Hide dev bypass" : "Dev: skip Selfie (testing only)"}
             </button>
@@ -224,12 +224,12 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
                   value={devSecret}
                   onChange={(e) => setDevSecret(e.target.value)}
                   placeholder="admin secret"
-                  className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                  className="field"
                 />
                 <button
                   onClick={handleDevBypass}
                   disabled={busy === "selfie" || !devSecret}
-                  className="rounded-md bg-amber-500 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                  className="rounded-full bg-[var(--warning)] px-3 py-1.5 text-xs font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.97] disabled:opacity-50 disabled:hover:scale-100"
                 >
                   {busy === "selfie" ? "..." : "Issue dev session"}
                 </button>
@@ -242,7 +242,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
             <button
               type="button"
               onClick={() => setSession(null)}
-              className="rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700"
+              className="btn btn-secondary btn-sm"
             >
               Reset session
             </button>
@@ -259,39 +259,40 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
         title="2. Submit Property Documents"
         description="Up to 3 files, PDF/PNG/JPEG, 5MB each."
         disabledReason={!session ? "Selfie verification is required first." : undefined}
+        active={step === 1}
       >
         <div className="flex flex-col gap-2">
           <div className="grid grid-cols-2 gap-2">
             <input
-              className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+              className="field"
               value={propertyId}
               onChange={(e) => setPropertyId(e.target.value)}
               placeholder="propertyId"
               disabled={!session}
             />
             <input
-              className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+              className="field"
               value={tokenSymbol}
               onChange={(e) => setTokenSymbol(e.target.value)}
               placeholder="token symbol"
               disabled={!session}
             />
             <input
-              className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+              className="field"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="display name"
               disabled={!session}
             />
             <input
-              className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+              className="field"
               value={city}
               onChange={(e) => setCity(e.target.value)}
               placeholder="city"
               disabled={!session}
             />
             <input
-              className="col-span-2 rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+              className="field col-span-2"
               value={sellerAccountId}
               onChange={(e) => setSellerAccountId(e.target.value)}
               placeholder="seller Hedera account"
@@ -304,10 +305,10 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
             accept="application/pdf,image/png,image/jpeg"
             disabled={!session}
             onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 3))}
-            className="text-sm"
+            className="text-sm text-[var(--muted)] file:mr-3 file:rounded-lg file:border file:border-[var(--border-strong)] file:bg-[var(--surface-sunken)] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--foreground)]"
           />
           {files.length > 0 && (
-            <ul className="text-xs text-zinc-500">
+            <ul className="text-xs text-[var(--muted)]">
               {files.map((f) => (
                 <li key={f.name}>
                   {f.name} — {(f.size / 1024).toFixed(0)} KB
@@ -318,7 +319,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
           <button
             onClick={handleSubmit}
             disabled={!session || files.length === 0 || busy === "submit"}
-            className="w-fit rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+            className="btn btn-primary w-fit"
           >
             {busy === "submit" ? "Submitting..." : "Submit documents"}
           </button>
@@ -327,7 +328,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
       </ActionCard>
 
       {documentRoot && (
-        <ActionCard title="3. Review Status" description={`Document root: ${documentRoot.slice(0, 18)}…`}>
+        <ActionCard title="3. Review Status" description={`Document root: ${documentRoot.slice(0, 18)}…`} active={step === 2}>
           <div className="flex items-center gap-2">
             {propertyState === "PENDING_REVIEW" && <StatusBadge status="pending">Awaiting review</StatusBadge>}
             {propertyState === "APPROVED" && <StatusBadge status="success">Approved — Ed25519 signed</StatusBadge>}
@@ -338,7 +339,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
               // Without a session the handler returns immediately: no spinner, no error,
               // no state change. A dead button reads as a broken app.
               disabled={busy === "refresh" || !session}
-              className="rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700"
+              className="btn btn-secondary btn-sm"
             >
               {busy === "refresh" ? "..." : "Refresh status"}
             </button>
@@ -350,7 +351,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
       )}
 
       {propertyState === "APPROVED" && (
-        <ActionCard title="4. Tokenize" description="Only runs for a valid, signed APPROVED record.">
+        <ActionCard title="4. Tokenize" description="Only runs for a valid, signed APPROVED record." active={step === 3}>
           {attestationOnServer && !attestations[propertyId] && (
             <p className="mb-2 text-xs text-amber-600">
               The server holds an approval for this property, but this browser no longer has the
@@ -361,7 +362,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
           <button
             onClick={handleTokenize}
             disabled={busy === "tokenize" || !attestations[propertyId]}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+            className="btn btn-primary"
           >
             {busy === "tokenize" ? "Tokenizing..." : "Tokenize (HTS)"}
           </button>
@@ -371,7 +372,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
       {tokenizeResult && (
         <ActionCard title="5. Token Created" description={`Token ID: ${tokenizeResult.tokenId}`}>
           <EvidenceLink href={tokenizeResult.hashscanUrl} label="View on HashScan" />
-          <p className="mt-2 text-xs text-zinc-500">Next: read the live ENS config from the Buyer column.</p>
+          <p className="mt-2 text-xs text-[var(--muted)]">Next: read the live ENS config from the Buyer column.</p>
         </ActionCard>
       )}
 

@@ -104,7 +104,7 @@ export function WorldVerifyButton({
       <button
         onClick={start}
         disabled={disabled || preparing}
-        className="w-fit rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+        className="btn btn-primary w-fit"
       >
         {preparing ? "Preparing..." : label}
       </button>

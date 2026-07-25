@@ -47,10 +47,10 @@ function PayloadRow({ event }: { event: AuditEvent }) {
   const entries = Object.entries(event.payload ?? {});
   if (entries.length === 0) return null;
   return (
-    <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+    <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
       {entries.map(([key, value]) => (
         <div key={key} className="flex gap-1 text-xs">
-          <dt className="text-zinc-400">{key}</dt>
+          <dt className="text-[var(--faint)]">{key}</dt>
           <dd className="max-w-[22rem] truncate font-mono">
             {typeof value === "object" ? JSON.stringify(value) : String(value)}
           </dd>
@@ -97,16 +97,16 @@ export function AuditTimeline() {
           value={propertyId}
           onChange={(e) => setPropertyId(e.target.value.trim().toUpperCase())}
           placeholder="all properties"
-          className="w-40 rounded-md border border-zinc-300 px-2 py-1 font-mono text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          className="field w-40 font-mono"
         />
         <button
           onClick={load}
           disabled={busy}
-          className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+          className="btn btn-primary"
         >
           {busy ? "Reading Mirror Node..." : "Read the audit trail"}
         </button>
-        <span className="text-xs text-zinc-500">Leave the field empty for the whole protocol trail.</span>
+        <span className="text-xs text-[var(--muted)]">Leave the field empty for the whole protocol trail.</span>
       </div>
 
       {audit && (
@@ -127,24 +127,24 @@ export function AuditTimeline() {
           </div>
 
           {events.length === 0 ? (
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-[var(--muted)]">
               No events yet. Mirror Node lag is normal — a message that has reached consensus can take a few
               seconds to surface here, and a shorter list is not an error.
             </p>
           ) : (
-            <ol className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
+            <ol className="scroll-quiet flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
               {events.map((event) => (
                 <li
                   key={`${event.sequenceNumber}-${event.consensusTimestamp}`}
-                  className="rounded-lg border border-zinc-200 p-2 dark:border-zinc-800"
+                  className="rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)] p-3"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-zinc-400">#{event.sequenceNumber}</span>
+                    <span className="font-mono text-xs text-[var(--faint)]">#{event.sequenceNumber}</span>
                     <StatusBadge status={toneFor(event.eventType)}>{event.eventType}</StatusBadge>
                     {event.propertyId && (
-                      <span className="font-mono text-xs text-zinc-500">{event.propertyId}</span>
+                      <span className="font-mono text-xs text-[var(--muted)]">{event.propertyId}</span>
                     )}
-                    <span className="ml-auto font-mono text-xs text-zinc-400">
+                    <span className="ml-auto font-mono text-xs text-[var(--faint)]">
                       {consensusToClock(event.consensusTimestamp)}
                     </span>
                   </div>
@@ -154,7 +154,7 @@ export function AuditTimeline() {
             </ol>
           )}
 
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-[var(--muted)]">
             Append-only, not immutable: the topic has no submit key, so anyone may publish to it. The reader
             keeps only messages paid for by the operator account and drops the rest — the same rule anyone can
             apply to the same public topic to reach this exact list.

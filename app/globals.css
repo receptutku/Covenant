@@ -1,26 +1,342 @@
 @import "tailwindcss";
 
+/*
+ * PPREV Stone + Glass Protocol.
+ * Abstract Lisbon architecture in the background; protocol evidence in the foreground.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Stone white / dark navy text / pale Atlantic blue / restrained pale gold. */
+  --background: #f4f5f2;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-sunken: rgba(230, 233, 231, 0.86);
+  --foreground: #10192b;
+  --muted: #4d5a6b;
+  --faint: #8892a0;
+  --border: rgba(16, 27, 46, 0.1);
+  --border-strong: rgba(16, 27, 46, 0.2);
+  --accent: #10192b;
+  --accent-foreground: #f7f8f6;
+  --ring: rgba(59, 110, 165, 0.18);
+
+  --glass: rgba(255, 255, 255, 0.68);
+  --glass-strong: rgba(255, 255, 255, 0.86);
+  --tile: rgba(255, 255, 255, 0.76);
+  --azulejo: #3b6ea5;
+  --azulejo-soft: rgba(59, 110, 165, 0.12);
+  --ochre: #b99a5c;
+
+  --success: #1f6f52;
+  --success-soft: rgba(31, 111, 82, 0.1);
+  --success-border: rgba(31, 111, 82, 0.25);
+  --warning: #93630f;
+  --warning-soft: rgba(147, 99, 15, 0.12);
+  --warning-border: rgba(147, 99, 15, 0.28);
+  --danger: #8a1f2b;
+  --danger-soft: rgba(138, 31, 43, 0.08);
+  --danger-border: rgba(138, 31, 43, 0.28);
+}
+
+/*
+ * Manual theme override: a `.theme-light` / `.theme-dark` class on <html>
+ * (set by the toggle in app/page.tsx) wins over the system preference below.
+ * No class at all means "follow the system", same as before.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not(.theme-light) {
+    --background: #0a0f18;
+    --surface: rgba(16, 22, 32, 0.8);
+    --surface-sunken: rgba(22, 29, 40, 0.88);
+    --foreground: #eef1f3;
+    --muted: #a9b2bd;
+    --faint: #737d8a;
+    --border: rgba(238, 241, 243, 0.12);
+    --border-strong: rgba(238, 241, 243, 0.2);
+    --accent: #eef1f3;
+    --accent-foreground: #0a0f18;
+    --ring: rgba(111, 168, 217, 0.22);
+
+    --glass: rgba(14, 19, 28, 0.66);
+    --glass-strong: rgba(20, 26, 37, 0.86);
+    --tile: rgba(10, 14, 21, 0.72);
+    --azulejo: #6fa8d9;
+    --azulejo-soft: rgba(111, 168, 217, 0.14);
+    --ochre: #d9bd7e;
+
+    --success: #6fd3af;
+    --success-soft: rgba(111, 211, 175, 0.12);
+    --success-border: rgba(111, 211, 175, 0.28);
+    --warning: #e0c07a;
+    --warning-soft: rgba(224, 192, 122, 0.13);
+    --warning-border: rgba(224, 192, 122, 0.3);
+    --danger: #e2717f;
+    --danger-soft: rgba(226, 113, 127, 0.12);
+    --danger-border: rgba(226, 113, 127, 0.32);
+  }
+}
+
+/* Forces dark even when the system/browser is in light mode. */
+:root.theme-dark {
+  --background: #0a0f18;
+  --surface: rgba(16, 22, 32, 0.8);
+  --surface-sunken: rgba(22, 29, 40, 0.88);
+  --foreground: #eef1f3;
+  --muted: #a9b2bd;
+  --faint: #737d8a;
+  --border: rgba(238, 241, 243, 0.12);
+  --border-strong: rgba(238, 241, 243, 0.2);
+  --accent: #eef1f3;
+  --accent-foreground: #0a0f18;
+  --ring: rgba(111, 168, 217, 0.22);
+
+  --glass: rgba(14, 19, 28, 0.66);
+  --glass-strong: rgba(20, 26, 37, 0.86);
+  --tile: rgba(10, 14, 21, 0.72);
+  --azulejo: #6fa8d9;
+  --azulejo-soft: rgba(111, 168, 217, 0.14);
+  --ochre: #d9bd7e;
+
+  --success: #6fd3af;
+  --success-soft: rgba(111, 211, 175, 0.12);
+  --success-border: rgba(111, 211, 175, 0.28);
+  --warning: #e0c07a;
+  --warning-soft: rgba(224, 192, 122, 0.13);
+  --warning-border: rgba(224, 192, 122, 0.3);
+  --danger: #e2717f;
+  --danger-soft: rgba(226, 113, 127, 0.12);
+  --danger-border: rgba(226, 113, 127, 0.32);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  min-height: 100%;
 }
 
 body {
+  min-height: 100%;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--azulejo);
+  outline-offset: 2px;
+}
+
+.scroll-quiet::-webkit-scrollbar {
+  width: 7px;
+}
+.scroll-quiet::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+.scroll-quiet::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  .app-shell {
+    position: relative;
+    isolation: isolate;
+    min-height: 100svh;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 14% 6%, var(--azulejo-soft), transparent 32rem),
+      radial-gradient(circle at 88% 2%, rgba(185, 154, 92, 0.1), transparent 28rem),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.5), transparent 26rem),
+      var(--background);
+  }
+
+  /*
+   * Lisbon hero — the compact banner at the top of app/page.tsx. Everything
+   * below is a CSS-only, very-low-contrast abstraction: an azulejo corner
+   * motif, a thin 25 de Abril bridge silhouette, a soft Tejo river band. No
+   * images, no SVG files — pseudo-elements and gradients only, so it costs
+   * nothing to keep and never fights the text sitting on top of it.
+   */
+  .lisbon-hero {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(180deg, var(--glass-strong), var(--glass));
+  }
+
+  .font-display {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L", Georgia, serif;
+  }
+
+  .app-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, var(--border) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--border) 1px, transparent 1px),
+      linear-gradient(135deg, transparent 0 44%, var(--azulejo-soft) 44% 45%, transparent 45% 100%);
+    background-size: 88px 88px, 88px 88px, 176px 176px;
+    mask-image: linear-gradient(180deg, black 0%, rgba(0, 0, 0, 0.72) 42%, transparent 100%);
+    opacity: 0.72;
+  }
+
+  .app-shell::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    backdrop-filter: blur(0.2px);
+    background:
+      linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent),
+      radial-gradient(circle at 50% -10%, rgba(255, 255, 255, 0.42), transparent 36rem);
+  }
+
+  .architectural-bg {
+    background:
+      linear-gradient(180deg, var(--glass-strong), var(--glass)),
+      repeating-linear-gradient(90deg, transparent 0 30px, var(--azulejo-soft) 30px 31px);
+  }
+
+  .glass-panel {
+    background: var(--glass);
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 80px rgba(10, 12, 14, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(18px) saturate(1.08);
+  }
+
+  .evidence-panel {
+    background: linear-gradient(180deg, var(--glass-strong), var(--glass));
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 18px 60px rgba(10, 12, 14, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    backdrop-filter: blur(16px) saturate(1.05);
+  }
+
+  .metric-tile {
+    background: var(--tile);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold
+           transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40;
+    min-height: 38px;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: var(--accent-foreground);
+    box-shadow: 0 10px 26px rgba(10, 12, 14, 0.14);
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px) scale(1.02);
+    opacity: 0.92;
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid var(--border-strong);
+    color: var(--foreground);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--surface-sunken);
+    transform: translateY(-1px) scale(1.02);
+  }
+  .btn-secondary:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .btn-sm {
+    @apply rounded-full px-3 py-1.5 text-xs;
+    min-height: 32px;
+  }
+
+  .field {
+    @apply rounded-lg px-3 py-2 text-sm transition-all duration-150;
+    min-height: 38px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+  }
+  .field::placeholder {
+    color: var(--faint);
+  }
+  .field:focus {
+    border-color: var(--azulejo);
+    outline: none;
+    box-shadow: 0 0 0 4px var(--ring);
+  }
+
+  .panel {
+    @apply rounded-2xl p-5;
+    background: var(--glass);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(16px) saturate(1.05);
+  }
+
+  .label-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.1em];
+    color: var(--faint);
+  }
+
+  /*
+   * The currently-actionable card in a column: a soft pulsing ring so a user
+   * can tell where to continue without reading every card. Pure decoration —
+   * driven by an `active` boolean each view already computes for its own
+   * step index; no new state, no changed conditions.
+   */
+  .step-active {
+    position: relative;
+    border-color: var(--azulejo) !important;
+  }
+  .step-active::before {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 2px solid var(--azulejo);
+    opacity: 0.3;
+    pointer-events: none;
+    animation: ppr-pulse-ring 2.4s ease-in-out infinite;
+  }
+  @keyframes ppr-pulse-ring {
+    0%,
+    100% {
+      opacity: 0.22;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.6;
+      transform: scale(1.008);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .step-active::before {
+      animation: none;
+      opacity: 0.4;
+    }
+  }
 }

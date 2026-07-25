@@ -100,22 +100,22 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <h2 className="text-lg font-bold">Verifier (Human Review)</h2>
+    <div className="flex flex-col gap-5">
+      <h2 className="border-b border-[var(--border)] pb-4 text-[22px] font-semibold tracking-[-0.03em]">Verifier <span className="font-normal text-[var(--faint)]">· human review</span></h2>
 
-      <ActionCard title="Sign in" description="Use the admin secret to see pending properties.">
+      <ActionCard title="Sign in" description="Use the admin secret to see pending properties." active={!unlocked}>
         <div className="flex gap-2">
           <input
             type="password"
             value={adminSecret}
             onChange={(e) => setAdminSecret(e.target.value)}
             placeholder="x-demo-admin-secret"
-            className="flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="flex-1 field"
           />
           <button
             onClick={loadPending}
             disabled={busy === "load"}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+            className="btn btn-primary"
           >
             {busy === "load" ? "..." : "Load pending"}
           </button>
@@ -128,15 +128,15 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
       )}
 
       {pending.map((item) => (
-        <ActionCard key={item.propertyId} title={`${item.propertyId} — ${item.displayName}`} description={item.city}>
-          <ul className="mb-2 text-xs text-zinc-500">
+        <ActionCard key={item.propertyId} title={`${item.propertyId} — ${item.displayName}`} description={item.city} active>
+          <ul className="mb-3 rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)] p-3 text-xs leading-relaxed text-[var(--muted)]">
             {item.files.map((f) => (
               <li key={f.name}>
                 {f.name} · {f.type} · {(f.sizeBytes / 1024).toFixed(0)} KB
               </li>
             ))}
           </ul>
-          <p className="mb-2 text-xs text-zinc-400">Document root: {item.documentRoot.slice(0, 20)}…</p>
+          <p className="mb-3 font-mono text-xs text-[var(--faint)]">Document root: {item.documentRoot.slice(0, 20)}…</p>
 
           <div className="mb-2 flex flex-col gap-1 text-xs">
             {[
@@ -145,7 +145,7 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
               { key: "ownerMatch", label: "Owner/authority matches the demo record" },
               { key: "sufficient", label: "Sufficient for review" },
             ].map((c) => (
-              <label key={c.key} className="flex items-center gap-2">
+              <label key={c.key} className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2">
                 <input
                   type="checkbox"
                   checked={checksFor(item.propertyId)[c.key as keyof ReviewChecks]}
@@ -168,7 +168,7 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
             <button
               onClick={() => decide(item.propertyId, "APPROVED")}
               disabled={!allCheckedFor(item.propertyId) || busy === item.propertyId + "APPROVED"}
-              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              className="rounded-full bg-[var(--success)] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.97] disabled:opacity-40 disabled:hover:scale-100"
             >
               Approve
             </button>
@@ -176,12 +176,12 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="rejection reason"
-              className="rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-800"
+              className="field flex-1"
             />
             <button
               onClick={() => decide(item.propertyId, "REJECTED")}
               disabled={busy === item.propertyId + "REJECTED"}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              className="rounded-full bg-[var(--danger)] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.97] disabled:opacity-40 disabled:hover:scale-100"
             >
               Reject
             </button>
@@ -200,17 +200,17 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
             <button
               onClick={runTamperTest}
               disabled={busy === "tamper"}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
+              className="btn btn-secondary btn-sm"
             >
               {busy === "tamper" ? "Testing..." : "🧪 Tamper test (corrupt documentRoot, try tokenize)"}
             </button>
             {tamperResult === "blocked" && (
-              <p className="mt-2 text-sm text-emerald-600">
+              <p className="mt-2 text-sm text-[var(--success)]">
                 ✅ Expected result: the tampered attestation was rejected on tokenize (ATTESTATION_INVALID).
               </p>
             )}
             {tamperResult === "unexpected" && (
-              <p className="mt-2 text-sm text-red-600">
+              <p className="mt-2 text-sm text-[var(--danger)]">
                 ⚠ Unexpected: the tampered attestation was accepted. This is a security bug — stop the demo.
               </p>
             )}

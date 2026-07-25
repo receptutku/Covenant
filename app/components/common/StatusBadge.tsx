@@ -1,16 +1,40 @@
 type Status = "idle" | "pending" | "success" | "error" | "info";
 
-const STYLES: Record<Status, string> = {
-  idle: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
-  pending: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  success: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-  error: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
-  info: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
+/**
+ * Colour alone is not the signal — each badge also carries a dot, so a state is
+ * still distinguishable in a screenshot, on a projector, or to someone who does
+ * not separate red from green.
+ */
+const STYLES: Record<Status, { chip: string; dot: string }> = {
+  idle: {
+    chip: "bg-[var(--surface-sunken)] text-[var(--muted)] ring-1 ring-[var(--border)]",
+    dot: "bg-[var(--faint)]",
+  },
+  pending: {
+    chip: "bg-[var(--warning-soft)] text-[var(--warning)] ring-1 ring-[var(--warning-border)]",
+    dot: "bg-[var(--warning)]",
+  },
+  success: {
+    chip: "bg-[var(--success-soft)] text-[var(--success)] ring-1 ring-[var(--success-border)]",
+    dot: "bg-[var(--success)]",
+  },
+  error: {
+    chip: "bg-[var(--danger-soft)] text-[var(--danger)] ring-1 ring-[var(--danger-border)]",
+    dot: "bg-[var(--danger)]",
+  },
+  info: {
+    chip: "bg-[var(--azulejo-soft)] text-[var(--azulejo)] ring-1 ring-[color:rgba(34,91,122,0.24)] dark:ring-[color:rgba(101,171,208,0.28)]",
+    dot: "bg-[var(--azulejo)]",
+  },
 };
 
 export function StatusBadge({ status, children }: { status: Status; children: React.ReactNode }) {
+  const style = STYLES[status];
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${STYLES[status]}`}>
+    <span
+      className={`inline-flex min-h-7 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${style.chip}`}
+    >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} aria-hidden />
       {children}
     </span>
   );

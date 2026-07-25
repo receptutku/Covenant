@@ -159,10 +159,12 @@ export function BuyerView() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold">Buyer</h2>
-        <StepIndicator steps={STEPS} activeIndex={step} />
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-3 border-b border-[var(--border)] pb-4">
+        <div className="flex items-end justify-between gap-3">
+          <h2 className="text-[22px] font-semibold tracking-[-0.03em]">Buyer</h2>
+          <StepIndicator steps={STEPS} activeIndex={step} />
+        </div>
       </div>
 
       <ActionCard
@@ -173,15 +175,15 @@ export function BuyerView() {
         <button
           onClick={handleSeed}
           disabled={busy === "seed" || !adminSecret.trim()}
-          className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
+          className="btn btn-secondary btn-sm"
         >
           {busy === "seed" ? "Seeding..." : "Seed PROP-001"}
         </button>
         {seedResult && (
-          <p className="mt-2 text-xs text-emerald-600">
+          <p className="mt-2 text-xs text-[var(--success)]">
             Seeded {seedResult.properties.join(", ")} · token {seedResult.tokenId} · {seedResult.elapsedMs}ms
             {!seedResult.rebalanced.ok && (
-              <span className="block text-amber-600">
+              <span className="block text-[var(--warning)]">
                 Share reservoir exhausted — the secondary scene will fail. Run `npm run stage` before presenting.
               </span>
             )}
@@ -194,26 +196,26 @@ export function BuyerView() {
           action), so the second Selfie Check of the day is refused as
           WORLD_PROOF_REPLAY at step one, before anything can be shown.
         */}
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-3">
           <input
             type="password"
             value={adminSecret}
             onChange={(e) => setAdminSecret(e.target.value)}
             placeholder="admin secret"
-            className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="field"
           />
           <button
             onClick={handleClearReplay}
             disabled={busy === "replay" || !adminSecret}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-zinc-700"
+            className="btn btn-secondary btn-sm"
           >
             {busy === "replay" ? "Clearing..." : "Clear World replay guard"}
           </button>
           {clearedCount !== null && (
-            <span className="text-xs text-emerald-600">{clearedCount} proof digest(s) forgotten.</span>
+            <span className="text-xs text-[var(--success)]">{clearedCount} proof digest(s) forgotten.</span>
           )}
         </div>
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-xs text-[var(--muted)]">
           Run this between rehearsals. It forgets used World proofs only — seeded properties, sessions and chain
           state survive.
         </p>
@@ -223,6 +225,7 @@ export function BuyerView() {
         title="0. Pick a property"
         description="Golden scenes run on PROP-001; type any live property id."
         techNote="Discovery is live; settlement is not. The client resolves each property's config from ENS before it renders, but transfers still read the token from the server's own record."
+        active={step === 0}
       >
         <div className="flex flex-wrap items-center gap-2">
           {/*
@@ -239,30 +242,30 @@ export function BuyerView() {
               setBuyResult(null);
             }}
             placeholder="PROP-001"
-            className="w-36 rounded-md border border-zinc-300 px-2 py-1 font-mono text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="field w-36 font-mono"
           />
           <button
             onClick={loadEns}
             disabled={busy === "ens"}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+            className="btn btn-primary"
           >
             {busy === "ens" ? "Reading..." : ens ? "Re-read live ENS config" : "Read live ENS config"}
           </button>
         </div>
 
         {ens && (
-          <div className="mt-3 rounded-md border border-zinc-200 p-2 text-xs dark:border-zinc-800">
-            <div className="mb-1 flex items-center gap-2">
+          <div className="evidence-panel mt-4 rounded-2xl p-4 text-xs">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               <StatusBadge status="info">{ens.name}</StatusBadge>
               <StatusBadge status="success">Source: {ens.source === "ens" ? "ENS Sepolia · live" : "env-fallback"}</StatusBadge>
               <StatusBadge status={ens.mode === "SALE" ? "idle" : "pending"}>{ens.mode}</StatusBadge>
             </div>
-            <table className="w-full text-left">
+            <table className="w-full text-left text-[12px]">
               <tbody>
                 {Object.entries(ens.records).map(([k, v]) => (
-                  <tr key={k} className="border-t border-zinc-100 dark:border-zinc-800">
-                    <td className="py-1 pr-2 font-mono text-zinc-400">{k}</td>
-                    <td className="py-1 font-mono break-all">{v}</td>
+                  <tr key={k} className="border-t border-[var(--border)]">
+                    <td className="py-2 pr-3 font-mono text-[var(--faint)]">{k}</td>
+                    <td className="py-2 font-mono break-all text-[var(--foreground)]">{v}</td>
                   </tr>
                 ))}
               </tbody>
@@ -275,7 +278,7 @@ export function BuyerView() {
               answer, since a re-read may legitimately be served from the server's 60s cache
               and carry the same one.
             */}
-            <p className="mt-2 text-zinc-500">
+            <p className="mt-2 text-[var(--muted)]">
               Resolved at {new Date(ens.resolvedAt).toLocaleTimeString()}. Tokenizing republishes the token id in
               the background, so a read taken while that write is confirming still shows the previous run&apos;s id —
               re-read to pick up the new one. Reads are cached for up to 60s: an unchanged timestamp means the same
@@ -289,13 +292,16 @@ export function BuyerView() {
         title="1-2. Pick an account + Association"
         description="buyer1/buyer2 are KYC'd test accounts; nokyc is deliberately un-KYC'd."
         disabledReason={!ens ? "Read the ENS config first." : undefined}
+        active={step === 1}
       >
         <div className="flex flex-wrap gap-2">
           {(["buyer1", "buyer2", "nokyc"] as const).map((k) => (
             <label
               key={k}
-              className={`cursor-pointer rounded-lg border px-3 py-1.5 text-sm ${
-                buyerKey === k ? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black" : "border-zinc-300 dark:border-zinc-700"
+              className={`cursor-pointer rounded-full border px-3 py-2 text-sm font-semibold transition-all ${
+                buyerKey === k
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
+                  : "border-[var(--border-strong)] bg-[var(--surface-sunken)] text-[var(--muted)] hover:text-[var(--foreground)]"
               }`}
             >
               <input type="radio" className="hidden" checked={buyerKey === k} onChange={() => setBuyerKey(k)} disabled={!ens} />
@@ -304,13 +310,13 @@ export function BuyerView() {
           ))}
         </div>
 
-        <label className="mt-3 block text-xs text-zinc-500">
+        <label className="mt-3 block text-xs text-[var(--muted)]">
           Hedera account for {buyerKey}
           <input
             value={buyerAccountId}
             onChange={(e) => setAccounts((prev) => ({ ...prev, [buyerKey]: e.target.value }))}
             placeholder="0.0.xxxxxx"
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-2 py-1 font-mono text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="field mt-1 block w-full font-mono"
           />
         </label>
         {!buyerAccountId && (
@@ -319,7 +325,7 @@ export function BuyerView() {
           </p>
         )}
 
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-[var(--muted)]">
           Being associated does not grant a right to buy — only KYC does.
         </p>
       </ActionCard>
@@ -328,6 +334,7 @@ export function BuyerView() {
         title="3. Identity Check → KYC"
         description="World Identity confirms 18+/jurisdiction; a TokenGrantKycTransaction fires server-side."
         disabledReason={!ens ? "Read the ENS config first." : buyerKey === "nokyc" ? "nokyc is deliberately never granted KYC (golden scene)." : undefined}
+        active={step === 2}
       >
         {buyerKey !== "nokyc" && (
           <div className="flex flex-wrap items-center gap-2">
@@ -342,7 +349,7 @@ export function BuyerView() {
               onClick={doDevKyc}
               disabled={!ens || !adminSecret || !buyerAccountId || busy === "kyc"}
               title="Requires the admin secret entered in Demo helpers above."
-              className="rounded-md border border-dashed border-amber-400 px-3 py-1.5 text-xs text-amber-700 disabled:opacity-50 dark:text-amber-400"
+              className="rounded-lg border border-dashed border-[var(--warning-border)] bg-[var(--warning-soft)] px-3 py-2 text-xs font-semibold text-[var(--warning)] disabled:opacity-50"
             >
               Dev: grant without World proof
             </button>
@@ -360,12 +367,13 @@ export function BuyerView() {
       <ActionCard
         title="4. Buy"
         description="primary: fresh property (treasury exemption, no fee) · secondary: buyer1→buyer2 (2% fee above 50 shares — below that the 1-share floor dominates) · nokyc: deliberate rejection"
+        active={step === 3}
       >
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_96px_auto]">
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as typeof mode)}
-            className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="field w-full"
           >
             <option value="primary">primary (operator → buyer)</option>
             <option value="secondary">secondary (buyer1 → buyer2, 2% fee at 100 shares)</option>
@@ -377,47 +385,57 @@ export function BuyerView() {
             onChange={(e) => setAmount(Number(e.target.value))}
             min={1}
             max={1000}
-            className="w-24 rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="field w-full"
           />
           <button
             onClick={doBuy}
             // An empty field is Number("") === 0 and junk is NaN; both are rejected by the
             // server as INVALID_INPUT. A disabled button says so before the round trip.
             disabled={busy === "buy" || !Number.isInteger(amount) || amount < 1 || amount > 1000}
-            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
+            className="btn btn-primary"
           >
             {busy === "buy" ? "Processing..." : "Buy / attempt"}
           </button>
         </div>
 
         {buyResult && (
-          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm dark:border-emerald-900 dark:bg-emerald-950">
-            <p className="font-medium text-emerald-700 dark:text-emerald-300">
-              ✅ Transfer complete: {buyResult.from} → {buyResult.to}
-            </p>
-            {/*
-              Sent and received are shown separately because the 2% fee is
-              INCLUSIVE — quoting the sent amount next to the recipient would
-              contradict Mirror Node's own transfer list for this transaction.
-            */}
-            <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-md bg-white/60 p-2 dark:bg-black/20">
-                <dt className="text-[10px] uppercase tracking-wide text-emerald-700/70">Sent</dt>
-                <dd className="font-mono text-base font-semibold">{buyResult.amount}</dd>
-              </div>
-              <div className="rounded-md bg-white/60 p-2 dark:bg-black/20">
-                <dt className="text-[10px] uppercase tracking-wide text-emerald-700/70">Protocol fee</dt>
-                <dd className="font-mono text-base font-semibold">
-                  {buyResult.assessedCustomFees.reduce((sum, f) => sum + f.amount, 0)}
-                </dd>
-              </div>
-              <div className="rounded-md bg-white/60 p-2 dark:bg-black/20">
-                <dt className="text-[10px] uppercase tracking-wide text-emerald-700/70">Received</dt>
-                <dd className="font-mono text-base font-semibold">{buyResult.netAmount}</dd>
-              </div>
-            </dl>
-            {buyResult.assessedCustomFees.length > 0 ? (
-              <p className="mt-2 text-xs text-emerald-600">
+          <div className="evidence-panel mt-5 overflow-hidden rounded-2xl border-[var(--success-border)]">
+            <div className="border-b border-[var(--success-border)] bg-[var(--success-soft)] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--success)]">
+              Transfer settled on Hedera
+            </div>
+
+            <div className="p-5">
+              <p className="break-all font-mono text-[13px] leading-relaxed text-[var(--success)]">
+                {buyResult.from} <span className="text-[var(--faint)]">→</span> {buyResult.to}
+              </p>
+
+              {/*
+                Sent and received are shown separately because the 2% fee is
+                INCLUSIVE — quoting the sent amount next to the recipient would
+                contradict Mirror Node's own transfer list for this transaction.
+              */}
+              <dl className="mt-5 grid grid-cols-3 gap-2 text-center">
+                <div className="metric-tile rounded-xl p-4">
+                  <dt className="label-eyebrow text-[var(--muted)]">Sent</dt>
+                  <dd className="tabular mt-2 font-mono text-[34px] font-semibold leading-none tracking-[-0.04em]">
+                    {buyResult.amount}
+                  </dd>
+                </div>
+                <div className="metric-tile rounded-xl border-[var(--success-border)] bg-[var(--success-soft)] p-4">
+                  <dt className="label-eyebrow text-[var(--success)]">Protocol fee</dt>
+                  <dd className="tabular mt-2 font-mono text-[34px] font-semibold leading-none tracking-[-0.04em]">
+                    {buyResult.assessedCustomFees.reduce((sum, f) => sum + f.amount, 0)}
+                  </dd>
+                </div>
+                <div className="metric-tile rounded-xl p-4">
+                  <dt className="label-eyebrow text-[var(--muted)]">Received</dt>
+                  <dd className="tabular mt-2 font-mono text-[34px] font-semibold leading-none tracking-[-0.04em]">
+                    {buyResult.netAmount}
+                  </dd>
+                </div>
+              </dl>
+              {buyResult.assessedCustomFees.length > 0 ? (
+                <p className="mt-4 text-xs leading-relaxed text-[var(--muted)]">
                 {/*
                   The chain charges max(1, floor(amount × 2%)) and shares are whole
                   units, so below 50 shares the floor dominates and the effective
@@ -431,10 +449,13 @@ export function BuyerView() {
                 was assessed by Hedera itself and routed to {buyResult.assessedCustomFees[0].collectorAccountId} — the
                 app never moves it.
               </p>
-            ) : (
-              <p className="mt-2 text-xs text-emerald-600">No fee (treasury exemption — expected behavior).</p>
-            )}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+              ) : (
+                <p className="mt-4 text-xs text-[var(--muted)]">
+                  No fee — the treasury is exempt from its own fee schedule.
+                </p>
+              )}
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
               {/*
                 Only `match` is allowed to claim ENS confirmed anything: `unavailable`
                 covers the env fallback, which is our own configuration read back to
@@ -449,14 +470,17 @@ export function BuyerView() {
               )}
             </div>
 
-            {buyResult.replayed && (
-              <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+              {buyResult.replayed && (
+                <p className="mt-4 rounded-xl border border-[var(--warning-border)] bg-[var(--warning-soft)] p-3 text-xs leading-relaxed text-[var(--warning)]">
                 Nothing moved: this repeated the previous request within 30 seconds and was not executed again.
                 The transaction below is the earlier one — real, but not new.
               </p>
             )}
 
-            <EvidenceLink href={buyResult.hashscanUrl} label="View on HashScan" />
+              <div className="mt-4">
+                <EvidenceLink href={buyResult.hashscanUrl} label="View on HashScan" />
+              </div>
+            </div>
           </div>
         )}
       </ActionCard>
