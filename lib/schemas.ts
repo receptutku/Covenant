@@ -65,15 +65,31 @@ export const verifierDecisionSchema = z
     path: ['reason'],
   })
 
+/**
+ * Deliberately permissive about the CONTENT of an attestation — every field is just a
+ * string here.
+ *
+ * Shape validation must not preempt signature verification. An attestation is a signed
+ * object, so the correct verdict on a modified one is "the signature no longer matches"
+ * (`ATTESTATION_INVALID`), not "this field looks wrong" (`INVALID_INPUT`). With a strict
+ * `documentRoot` pattern and a `decision` literal, a doctored attestation was rejected by
+ * Zod before `assertAttestationValid` ever ran — so the tamper-test scene, which is one of
+ * the strongest security moments in the demo, produced a generic 400 that reads as a
+ * malformed request instead of a blocked forgery.
+ *
+ * Nothing is weakened by relaxing this: `assertAttestationValid` verifies the Ed25519
+ * signature over the canonical payload, cross-checks every field against the stored
+ * property, and enforces expiry. A field that is the wrong shape cannot survive that.
+ */
 export const attestationSchema = z.object({
-  propertyId: propertyIdSchema,
-  sellerAccountId: accountIdSchema,
-  documentRoot: z.string().regex(/^[0-9a-f]{64}$/, 'documentRoot must be 64 hex characters'),
-  decision: z.literal('APPROVED'),
-  issuedAt: z.string(),
-  expiresAt: z.string(),
-  signature: z.string().min(1),
-  verifierPublicKey: z.string().min(1),
+  propertyId: z.string().min(1).max(120),
+  sellerAccountId: z.string().min(1).max(64),
+  documentRoot: z.string().min(1).max(200),
+  decision: z.string().min(1).max(32),
+  issuedAt: z.string().min(1).max(64),
+  expiresAt: z.string().min(1).max(64),
+  signature: z.string().min(1).max(512),
+  verifierPublicKey: z.string().min(1).max(512),
 })
 
 export const tokenizeSchema = z.object({

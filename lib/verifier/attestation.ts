@@ -20,6 +20,21 @@ import type { OwnershipAttestation, Property } from '../types'
 const DOMAIN = 'PPREV_OWNERSHIP_V1'
 
 /**
+ * An attestation as received from a client: the right fields, none of the guarantees.
+ * Every value is a plain string until the signature says otherwise.
+ */
+export type AttestationCandidate = {
+  propertyId: string
+  sellerAccountId: string
+  documentRoot: string
+  decision: string
+  issuedAt: string
+  expiresAt: string
+  signature: string
+  verifierPublicKey: string
+}
+
+/**
  * The canonical text that gets signed.
  *
  * The field order and the line breaks are FIXED. Because the verifying side regenerates
@@ -128,7 +143,12 @@ export function signOwnershipAttestation(property: Property): OwnershipAttestati
  * tokenize an unapproved one.
  */
 export function assertAttestationValid(
-  attestation: OwnershipAttestation,
+  // Takes an UNVERIFIED candidate, not a typed `OwnershipAttestation`. That is the whole
+  // point of the function: it is handed whatever arrived over the wire. Declaring the
+  // parameter as the verified type would force callers to assert a guarantee this
+  // function exists to establish, and would push shape-checking upstream into Zod — where
+  // a tampered attestation gets rejected as malformed input instead of as a forgery.
+  attestation: AttestationCandidate,
   property: Property,
 ): void {
   const payload = canonicalPayload({
