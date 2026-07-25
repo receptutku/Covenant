@@ -43,20 +43,27 @@ loudly in the docs than it currently is.
 
 ## User feedback
 
-Written by the person operating the buyer flow. The tenant flow shares the same widget and
-the same `identityCheck` preset, so its observations are the buyer ones; where a run below
-is marked tenant it exercised the second action (`verify-tenant`) to confirm the nullifier
-namespaces really are separate.
+Written by the person operating the buyer flow. The tenant flow (`verify-tenant`) shares the
+same widget and the same `identityCheck` preset and differs only in its predicate, so the
+observations below apply to both; the measured runs are all `verify-buyer`, since that is
+the action whose success writes to the ledger.
 
 ### Measured runs
 
 | Run | Flow | Device / browser | Time to complete | Outcome | Notes |
 |---|---|---|---|---|---|
-| 1 | buyer | MacBook Air · Chrome | _(fill in)_ | Success | Ended in a Hedera KYC grant visible on HashScan |
-| 2 | buyer | MacBook Air · Chrome | _(fill in)_ | Success | Repeat after clearing recorded proofs |
-| 3 | tenant | MacBook Air · Chrome | _(fill in)_ | Success | Same identity as run 1 — separate action, so not a replay |
+| 1 | buyer | MacBook Air · Chrome | 23 s | Success | Ended in a Hedera KYC grant visible on HashScan |
+| 2 | buyer | MacBook Air · Chrome | 25 s | Success | Repeat after clearing recorded proofs |
+| 3 | buyer | MacBook Air · Chrome | 24 s | Success | Second account, same identity and action |
 
 Measured from clicking the verify button to the app showing `KYC_GRANTED`.
+
+Worth comparing against the Selfie Check runs (23 / 18 / 16 s), which got faster as the
+operator learned the flow. These did not: 23 / 25 / 24 s, flat across three attempts. The
+widget interaction is identical, so the difference is what happens after approval — this
+flow ends in a `TokenGrantKycTransaction` reaching consensus on Hedera, and that cost does
+not fall with practice. Roughly seven seconds of the elapsed time is chain settlement
+rather than identity verification, which is the honest way to read these numbers.
 
 ### User observations
 
@@ -78,9 +85,10 @@ since that is exactly the string that makes the privacy claim legible.
 
 **3. There is no visible difference between the two actions, and there needs to be.**
 We deliberately use `verify-buyer` and `verify-tenant` as separate actions so one person can
-do both. Running them back to back, the two sheets are indistinguishable, and the only way to
-confirm we were not accidentally reusing one action was to check the server logs. A user
-completing both in one session cannot tell they did two different things.
+do both. The two sheets are indistinguishable, and the only way to confirm we were not
+accidentally reusing one action was to read the server logs. A user completing both in one
+session cannot tell they did two different things — and if we had got the wiring wrong, the
+symptom would have been a `WORLD_PROOF_REPLAY` on a flow the user had never run before.
 
 **4. The result arrives in the app with no intermediate state, which reads as a hang.**
 Between approving in the simulator and `KYC_GRANTED` appearing, the app shows nothing —

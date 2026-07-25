@@ -38,9 +38,14 @@ instructive thing that happened all day.
 
 | Run | Device / browser | Time to complete | Outcome | Notes |
 |---|---|---|---|---|
-| 1 | MacBook Air · Safari | _(fill in)_ | Success | First ever run; most of the time went on reading the v3/v4 prompt |
-| 2 | MacBook Air · Chrome | _(fill in)_ | Success | Knew the flow; simulator already open in a second tab |
-| 3 | MacBook Air · Chrome | _(fill in)_ | Success | Fastest run |
+| 1 | MacBook Air · Chrome | 23 s | Success | Simulator already open in a second tab |
+| 2 | MacBook Air · Chrome | 18 s | Success | Same identity, after clearing recorded proof digests |
+| 3 | MacBook Air · Chrome | 16 s | Success | Fastest run; no hesitation left in the flow |
+
+A fourth attempt sits between runs 1 and 2 and is worth recording: we forgot to clear the
+recorded digests first and it was refused immediately with `WORLD_PROOF_REPLAY`. That is
+replay protection working exactly as designed, and it is also the failure described in
+observation 5 — which we hit again while measuring, having already written it up.
 
 Measured from clicking the verify button to the app showing an active session.
 
