@@ -1,7 +1,7 @@
 import { createPublicClient, http } from 'viem'
 import { sepolia } from 'viem/chains'
 import { ApiError } from '../errors'
-import { setEnsCacheInvalidator } from './write'
+import { isPublishPending, setEnsCacheInvalidator } from './write'
 import {
   RECORD_KEYS,
   REQUIRED_COMMON,
@@ -155,7 +155,9 @@ function validate(records: Record<string, string>, name: string): 'SALE' | 'RENT
 export async function readEnsConfig(propertyId: string): Promise<EnsConfig> {
   const name = subnameFor(propertyId)
 
-  const cached = cache().get(name)
+  // Bypass the cache entirely while a publish for this name is in flight, so a freshly
+  // tokenized property never shows the previous run's token id.
+  const cached = isPublishPending(name) ? undefined : cache().get(name)
   if (cached && cached.expiresAt > Date.now()) return cached.config
 
   let records: Record<string, string>

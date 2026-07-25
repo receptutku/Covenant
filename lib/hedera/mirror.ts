@@ -67,45 +67,64 @@ export type AuditEvent = {
  * anyone may submit to it; one malformed entry from a stranger must not blank out a
  * legitimate timeline.
  */
+/** Pages of 100 to walk back through before giving up. */
+const MAX_PAGES = 6
+
 export async function readAuditTrail(
   topicId: string,
   propertyId?: string,
-  limit = 100,
+  wanted = 100,
 ): Promise<AuditEvent[]> {
-  // NEWEST first, then reversed into chronological order below. With `order=asc` the
-  // limit would cap the OLDEST hundred messages — after enough rehearsals the topic
-  // outgrows that window and the timeline silently stops showing anything new, which on
-  // stage reads as "the demo broke". Descending keeps the fresh events; only ancient
-  // history falls off the back.
-  const data = await mirrorGet<{ messages?: MirrorTopicMessage[] }>(
-    `/topics/${topicId}/messages?limit=${limit}&order=desc`,
-  )
-  if (!data?.messages) return []
-
+  // Newest first, paging backwards, then reversed into chronological order at the end.
+  //
+  // Two traps live here. With `order=asc` the limit caps the OLDEST hundred messages, so
+  // once the topic outgrows the window the timeline silently stops showing anything new.
+  // And because all properties share one topic, fetching a single page and filtering by
+  // propertyId afterwards can return ZERO events for a property whose history is provably
+  // on-chain — it simply fell outside the window. So we keep paging until we have enough
+  // matches rather than filtering whatever one page happened to contain.
   const events: AuditEvent[] = []
+  // 0 means "no cursor yet"; Mirror sequence numbers start at 1.
+  let before = 0
 
-  for (const message of [...data.messages].reverse()) {
-    let envelope: HcsEnvelope
-    try {
-      envelope = JSON.parse(Buffer.from(message.message, 'base64').toString('utf8'))
-    } catch {
-      continue
+  for (let page = 0; page < MAX_PAGES && events.length < wanted; page++) {
+    const cursor = before === 0 ? '' : `&sequencenumber=lt:${before}`
+    const data = await mirrorGet<{ messages?: MirrorTopicMessage[] }>(
+      `/topics/${topicId}/messages?limit=100&order=desc${cursor}`,
+    )
+
+    const messages: MirrorTopicMessage[] = data?.messages ?? []
+    if (messages.length === 0) break
+
+    for (const message of messages) {
+      let envelope: HcsEnvelope
+      try {
+        envelope = JSON.parse(Buffer.from(message.message, 'base64').toString('utf8'))
+      } catch {
+        // The topic is public and anyone may submit to it; one malformed entry from a
+        // stranger must not blank out a legitimate timeline.
+        continue
+      }
+      if (!envelope?.eventType) continue
+      if (propertyId && envelope.propertyId !== propertyId) continue
+
+      events.push({
+        eventType: envelope.eventType,
+        timestamp: envelope.timestamp,
+        consensusTimestamp: message.consensus_timestamp,
+        sequenceNumber: message.sequence_number,
+        propertyId: envelope.propertyId,
+        payload: envelope.payload ?? {},
+        explorerUrl: hashscanUrl('topic', topicId),
+      })
     }
-    if (!envelope?.eventType) continue
-    if (propertyId && envelope.propertyId !== propertyId) continue
 
-    events.push({
-      eventType: envelope.eventType,
-      timestamp: envelope.timestamp,
-      consensusTimestamp: message.consensus_timestamp,
-      sequenceNumber: message.sequence_number,
-      propertyId: envelope.propertyId,
-      payload: envelope.payload ?? {},
-      explorerUrl: hashscanUrl('topic', topicId),
-    })
+    before = messages[messages.length - 1].sequence_number
+    if (before <= 1) break
   }
 
-  return events
+  // Collected newest-first across pages; the UI reads a timeline forwards.
+  return events.reverse()
 }
 
 export type TokenSummary = {

@@ -44,7 +44,10 @@ function requireEnv(name: string): string {
 
 type PropertyConfig = { subname: string; records: Record<string, string> }
 
-function buildConfigs(overrides: Map<string, string>): PropertyConfig[] {
+function buildConfigs(
+  overrides: Map<string, string>,
+  publishedTokens: Map<string, string>,
+): PropertyConfig[] {
   const network = process.env.HEDERA_NETWORK ?? 'testnet'
   const operator = requireEnv('OPERATOR_ID')
   const topicId = requireEnv('AUDIT_TOPIC_ID')
@@ -71,13 +74,22 @@ function buildConfigs(overrides: Map<string, string>): PropertyConfig[] {
       },
     },
     {
-      // Live-flow property — re-tokenized during rehearsals, so the token id is
-      // overridable from the command line without touching the env file.
+      // Live-flow property. Its token changes on every run, and `/api/tokenize` already
+      // publishes the new id automatically — so the CURRENTLY PUBLISHED value is the
+      // freshest source of truth, ahead of the env file which goes stale immediately.
+      //
+      // Getting this order wrong was actively harmful: the runbook tells you to run this
+      // script whenever prop-001 drifts, and with env first that instruction silently
+      // reverted prop-002 to a token from two rehearsals ago. Preflight only validated
+      // prop-001, so the damage was invisible.
       subname: 'prop-002',
       records: {
         ...common('PROP-002', 'SALE'),
         [RECORD_KEYS.propertyTokenId]:
-          overrides.get('PROP-002') ?? process.env.PROP002_TOKEN_ID?.trim() ?? '0.0.9734945',
+          overrides.get('PROP-002') ??
+          publishedTokens.get('prop-002') ??
+          process.env.PROP002_TOKEN_ID?.trim() ??
+          requireEnv('SEED_TOKEN_ID'),
         [RECORD_KEYS.revenueTreasury]: operator,
       },
     },
@@ -115,7 +127,21 @@ async function main() {
   console.log('Resolver :', resolver)
   console.log('Writer   :', account.address, '\n')
 
-  for (const config of buildConfigs(overrides)) {
+  // Read what is already published before overwriting anything. A rewrite must not undo
+  // a token id that /api/tokenize published more recently than our env file was updated.
+  const publishedTokens = new Map<string, string>()
+  for (const sub of ['prop-001', 'prop-002', 'prop-003']) {
+    const current = await publicClient
+      .getEnsText({
+        name: `${sub}.${PARENT}`,
+        key: RECORD_KEYS.propertyTokenId,
+        universalResolverAddress: UNIVERSAL_RESOLVER,
+      })
+      .catch(() => null)
+    if (current) publishedTokens.set(sub, current)
+  }
+
+  for (const config of buildConfigs(overrides, publishedTokens)) {
     const name = `${config.subname}.${PARENT}`
     const node = namehash(name)
 
@@ -136,7 +162,7 @@ async function main() {
 
   // Read back through the UniversalResolver — the same path any outside verifier uses.
   console.log('\n▶ Read-back via UniversalResolver (public path)')
-  for (const config of buildConfigs(overrides)) {
+  for (const config of buildConfigs(overrides, publishedTokens)) {
     const name = `${config.subname}.${PARENT}`
     const mode = await publicClient.getEnsText({
       name,

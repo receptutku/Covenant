@@ -18,7 +18,8 @@
     "ens:check": "tsx scripts/ens-check.ts",
     "ens:register": "tsx scripts/ens-register.ts",
     "ens:write": "tsx scripts/ens-write.ts",
-    "preflight": "tsx scripts/preflight.ts"
+    "preflight": "tsx scripts/preflight.ts",
+    "fund": "tsx scripts/fund-demo.ts"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",

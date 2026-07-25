@@ -72,11 +72,29 @@ async function checkHedera() {
     else if (operatorBalance >= 10) warn('operator balance low', `${operatorBalance.toFixed(1)} ℏ`)
     else fail('operator balance', `${operatorBalance.toFixed(1)} ℏ — refill before the demo`)
 
+    // The tenant must cover the ADVERTISED deposit, not an arbitrary floor — and twice
+    // over, because engaging a second listing before settling the first locks two
+    // deposits at once. A threshold unrelated to the advertised figure passed happily
+    // while the demo could not actually afford the deposit ENS was publishing.
+    const advertisedDeposit = Number(process.env.FALLBACK_RENTAL_REQ_DEPOSIT ?? 50)
     const buyer1Balance = (await getHbarBalance(client, buyer1.accountId))
       .toBigNumber()
       .toNumber()
-    if (buyer1Balance >= 10) pass('buyer1 (tenant) balance', `${buyer1Balance.toFixed(0)} ℏ`)
-    else fail('buyer1 balance', `${buyer1Balance.toFixed(1)} ℏ — the escrow lock needs headroom`)
+    const needed = advertisedDeposit * 2
+
+    if (buyer1Balance >= needed) {
+      pass('buyer1 (tenant) balance', `${buyer1Balance.toFixed(0)} ℏ ≥ 2×${advertisedDeposit}`)
+    } else if (buyer1Balance >= advertisedDeposit) {
+      warn(
+        'buyer1 covers only one deposit',
+        `${buyer1Balance.toFixed(1)} ℏ vs advertised ${advertisedDeposit} — settle each listing before engaging the next`,
+      )
+    } else {
+      fail(
+        'buyer1 cannot cover the advertised deposit',
+        `${buyer1Balance.toFixed(1)} ℏ < ${advertisedDeposit} — engage would fail with INSUFFICIENT_DEPOSIT`,
+      )
+    }
   })
 }
 
@@ -120,6 +138,19 @@ async function checkMirrorAndScenePreconditions() {
     if (!buyer1) fail('buyer1 association', 'not associated with the seed token')
     else if (buyer1.balance >= 100) pass('buyer1 shares', `${buyer1.balance}`)
     else warn('buyer1 shares low', `${buyer1.balance} — POST /api/seed tops it back up`)
+
+    // Seed replenishes buyer1 by recycling from buyer2 and falling back to the treasury.
+    // Report the total float across both, because that pool is what actually bounds how
+    // many more rehearsals are possible — the treasury alone once looked healthy while
+    // draining 98 per run.
+    const buyer2 = await relationship(process.env.BUYER2_ID!.trim())
+    const treasury = await relationship(process.env.OPERATOR_ID!.trim())
+    const float = (buyer2?.balance ?? 0) + (treasury?.balance ?? 0)
+    if (float >= 200) {
+      pass('share float for reseeding', `${float} (buyer2 ${buyer2?.balance ?? 0} + treasury ${treasury?.balance ?? 0})`)
+    } else {
+      fail('share float exhausted', `${float} left — /api/seed will start failing`)
+    }
   } catch {
     warn('scene preconditions unverified', 'Mirror did not answer; re-run in a minute')
   }
