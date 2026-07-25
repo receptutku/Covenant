@@ -37,10 +37,13 @@ blocks — a record naming a token this protocol did not create. See `POST /api/
 
 ## 0. General rules
 
-- All requests and responses are `application/json`, and the content type is **enforced** on
-  every `POST`: a body sent as anything else is rejected with `INVALID_INPUT`. That is a
-  security control, not pedantry — `text/plain` makes a POST a CORS *simple* request, so no
-  preflight runs and the allow-list never gets consulted.
+- All requests and responses are `application/json`, and the content type is checked on every
+  `POST`: a body sent as `text/plain` is rejected with `INVALID_INPUT`. Treat this as hygiene,
+  **not** as a security control. `proxy.ts` reflects whatever `Origin` it is given rather than
+  holding an allow-list, so forcing a CORS preflight buys nothing — the preflight always
+  succeeds. Endpoint protection is per-endpoint: the admin secret, seller sessions, World
+  proofs. `/api/buy` has none of those by design, and `/api/rental/expire` is deliberately
+  permissionless.
 - Successful response: `200`, following the endpoint schemas below.
 - Error responses **always** use this envelope:
 
@@ -336,11 +339,15 @@ a different one), `SELLER_SESSION_EXPIRED` (401), `FILE_TOO_LARGE` (400),
 `UNSUPPORTED_FILE_TYPE` (400), `ALREADY_TOKENIZED` (409 — also returns the existing
 `tokenId`), `INVALID_INPUT` (400)
 
-> **A property can only be replaced from the session that submitted it.** Without that,
-> re-submitting against an existing id overwrote it — including the seeded `PROP-003`, which
-> is `APPROVED` and deliberately untokenized so the rental flow can list it. One stray upload
-> against that id resets it to `PENDING_REVIEW` and kills the rental scene, and the
-> `ALREADY_TOKENIZED` guard does not catch it, because `PROP-003` has no token.
+> **A property can only be replaced from the session that submitted it** — with one gap that
+> is deliberate and worth stating rather than discovering. The guard tests
+> `existing.ownerSessionToken`, and **seeded properties have none**, so `PROP-001` and
+> `PROP-003` are unprotected on the write side. That matters for `PROP-003`: it is `APPROVED`
+> and deliberately untokenized so the rental flow can list it, so one stray upload against
+> that id resets it to `PENDING_REVIEW` and kills the rental scene — and `ALREADY_TOKENIZED`
+> does not catch it either, because it has no token. It is left open because
+> `npm run e2e:rental` legitimately submits against `PROP-003` on its default path. What
+> protects it is the hard rule in `docs/RUNBOOK.md`, and `npm run seed` rewrites both.
 >
 > `TOO_MANY_FILES` is **not** reachable here: the Zod schema caps the array at 3 and runs
 > before the handler, so a fourth file is `INVALID_INPUT` with the field path `files`. The code

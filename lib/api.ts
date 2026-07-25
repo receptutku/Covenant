@@ -33,11 +33,23 @@ export function jsonResponse<T>(body: T, status = 200): NextResponse<T> {
  * invalid request could leak a document's base64 payload or a proof into the error message.
  */
 export async function parseBody<T>(request: Request, schema: ZodType<T>): Promise<T> {
-  // A JSON content type is required, and that is a security control rather than pedantry.
-  // `text/plain` makes a POST a CORS *simple* request: no preflight, so the allow-list in
-  // proxy.ts never runs and any page on the internet can drive an unauthenticated endpoint
-  // on whoever has our tunnel open. Requiring JSON forces the preflight, which is where that
-  // decision actually gets made.
+  // A JSON content type is required. This is hygiene, NOT a security control, and the
+  // earlier comment here claimed otherwise — worth correcting rather than deleting.
+  //
+  // The reasoning was: `text/plain` makes a POST a CORS *simple* request, so no preflight
+  // runs and the allow-list is never consulted. The first half is true. The second half
+  // assumes an allow-list, and `proxy.ts` does not have one — it reflects whatever `Origin`
+  // arrives. Forcing a preflight therefore buys nothing, because the preflight always
+  // succeeds. Measured: `OPTIONS /api/buy` with `Origin: https://evil.example` returns 204
+  // and echoes that origin.
+  //
+  // The check is also not airtight on its own terms: it matches the whole header, so
+  // `multipart/form-data; boundary=application/json` passes. Comparing the MIME essence is
+  // a one-line fix and is on the list for after the demo freeze.
+  //
+  // What actually protects the endpoints is per-endpoint: the admin secret, seller sessions,
+  // and World proofs. `/api/buy` has none of those by design, and `/api/rental/expire` is
+  // deliberately permissionless.
   const contentType = request.headers.get('content-type') ?? ''
   if (!contentType.toLowerCase().includes('application/json')) {
     throw new ApiError('INVALID_INPUT', 'Request body must be sent as application/json.')

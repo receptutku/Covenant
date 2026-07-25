@@ -154,8 +154,9 @@ alpha. Rental properties carry a different field set and clients branch on
 Stated precisely, because the distinction matters: ENS is **checked** at settlement, not yet
 **authoritative** for it. `/api/buy` resolves the property's `propertyTokenId` before any share
 moves and refuses the transfer outright — `ENS_CONFIG_MISMATCH`, nothing moved — if the record
-names a token this protocol did not create. So deleting or repointing a record is not
-cosmetic: it can stop a sale. What ENS does not yet do is *supply* the token id; that still
+names a token this protocol did not create. So repointing a record is not cosmetic: it
+can stop a sale. Deleting one does not — a missing or unreadable record is indistinguishable
+from an outage, and outages deliberately do not block. What ENS does not yet do is *supply* the token id; that still
 comes from the server's own record, with ENS as the check on it. Making ENS the source rather
 than the check is the honest next step.
 

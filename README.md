@@ -280,7 +280,9 @@ the cached entry as it writes — a freshly minted token id resolves immediately
 up to a minute later. ENS is also **checked at settlement**, which is the part worth being precise about.
 `/api/buy` resolves the property's `propertyTokenId` before any share moves and refuses the
 transfer — `ENS_CONFIG_MISMATCH`, nothing moved — if the record names a token this protocol
-did not create. Deleting or repointing a record is therefore not cosmetic: it can stop a sale.
+did not create. Repointing a record is therefore not cosmetic: it can stop a sale. Deleting one is not the
+same thing — a missing record is indistinguishable from an outage, and outages deliberately do
+not block.
 
 What ENS does *not* yet do is **supply** the token id; that still comes from the server's own
 record, with ENS as the check on it. Source rather than check is the honest next step.

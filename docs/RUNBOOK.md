@@ -235,10 +235,26 @@ hostile one look identical to the code, so the code refuses both.
 | **Type the admin secret in the Verifier column, and do it last.** | It is one module-global value shared with the Buyer column's Seed button. A typo there silently breaks the Verifier's next Approve, in a different column, with nothing linking them. | Re-type it in the Verifier column and click **Load pending** again. |
 | **Click "Load pending" after the seller submits, not before.** | The queue never refreshes itself. Clicking early shows "Queue is empty" forever, which looks like a failure and is not. | Click it again. |
 | **After tokenizing the live property, set the buyer's property field back to PROP-001** before the fee and rejection scenes. | A freshly minted token has its associations, KYC grants and buyer1 float prepared in the background. Too early, the fee scene answers `INSUFFICIENT_TOKEN_BALANCE` — and the rejection scene can answer `KYC_DENIED` for the *wrong reason*, which makes the UI narrate the network-level story over a race. | Wait ~15s and retry, or switch back to PROP-001. |
+| **If a judge says "now do it for the other buyer", change the amount by 1 too.** | The 30-second suppression key is `(property, mode, amount)` and does **not** include the buyer account. Switching only the radio inside that window returns the FIRST buyer's transaction with "Nothing moved" — which mis-explains it, because you did not repeat, you changed the recipient. | Change the amount, or wait 30 seconds. |
 | **If a judge says "do it again", change the amount by 1.** | An identical `(property, mode, amount)` within 30 seconds is suppressed and returns the first transaction with "Nothing moved". Correct and honest, but it reads as a failure. | Change the amount, or wait 30 seconds. |
 | **Reject is not gated by the review checklist.** Approve requires all four boxes; Reject does not, and the reason box sits between them. | A mis-click writes REJECTED and publishes it to HCS permanently. | The seller clicks **Submit documents** again (the files are still in state) → verifier clicks **Load pending** → Approve. ~15 seconds. Only works if the seller has not re-verified in between. |
 | **If the ENS panel returns `ENS_CONFIG_INCOMPLETE`, press the button again.** | A *partial* resolution — some records answered, some timed out — is non-empty, so the env fallback does not fire. Failures are never cached, so a retry usually succeeds. | If it keeps failing, skip it: Buy is not gated on ENS and both buyers are already KYC'd. |
 | **Rental: if `settle` or `expire` returns 500, do NOT retry.** | The terminal state is written when the transaction is submitted, not when the receipt arrives — deliberately, so a timeout cannot pay the escrow twice. The money moved. | Check HashScan. The retry will correctly answer `RENTAL_NOT_ENGAGED`. |
+
+### If you want to demonstrate the ENS refusal live
+
+`ENS_CONFIG_MISMATCH` only fires when the record names a **real, existing HTS token whose
+treasury is not our operator**. Garbage, a made-up id or a deleted record all resolve to
+*unavailable*, which never blocks — so a judge who deletes a record and expects a refusal
+will see the sale go through, and be right to ask why.
+
+To show it: have a real testnet token id from another treasury ready, point
+`com.pprev.hedera.propertyTokenId` at it, then wait out **both** caches — ENS resolution is
+cached 60s, and a repeat buy with the same `(property, mode, amount)` inside 30s never reaches
+the check at all. Change the amount to be sure.
+
+Expect the button to sit for up to ~20 s in that scene: a bad record costs an ENS resolution
+plus up to three Mirror attempts, all inside the lock.
 
 ---
 
