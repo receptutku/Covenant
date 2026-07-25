@@ -22,6 +22,28 @@ If preflight reports a failure, its message names the fix. The three usual ones:
 
 ---
 
+## Read this before the second rehearsal
+
+**The same person cannot pass the same World check twice.** A nullifier is derived from
+(identity, app, action), so it is identical every time — that is what makes replay
+protection work, and it means rehearsal #2 is refused at step one with
+`WORLD_PROOF_REPLAY`, before anything else can be shown.
+
+Between rehearsals that reuse the same World identity:
+
+```bash
+curl -s -X POST localhost:3000/api/dev/clear-replay -H "x-demo-admin-secret: <secret>"
+```
+
+Clears only the proof history. Seeded properties, sessions and on-chain state are
+untouched, so no reseed is needed. `/api/reset` also clears it, but takes the demo state
+with it.
+
+This is not a weakened check: proofs are still verified against World every time, and each
+one is still single-use after the call. It only forgets that this identity was seen before.
+
+---
+
 ## Mid-demo failures, ranked by likelihood
 
 ### 1. Server restarted / state gone

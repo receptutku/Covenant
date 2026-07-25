@@ -107,6 +107,22 @@ export function readSellerSession(
  * The check and the write happen in one step so two concurrent requests cannot both pass
  * with the same proof.
  */
+/**
+ * Forgets every recorded proof digest. Development only — see `/api/dev/clear-replay`.
+ *
+ * A World nullifier is deterministic in (identity, app, action), so the same person
+ * repeating the same check always presents the same nullifier. That is exactly what makes
+ * replay protection work, and exactly what makes a SECOND rehearsal fail at step one.
+ * Clearing the digests is the honest way to rehearse: it does not weaken the check, it
+ * just forgets that this identity was already seen.
+ */
+export function clearReplayDigests(): number {
+  const digests = getStore().worldReplayDigests
+  const count = digests.size
+  digests.clear()
+  return count
+}
+
 export function claimReplayDigest(digest: string): boolean {
   const digests = getStore().worldReplayDigests
   if (digests.has(digest)) return false
