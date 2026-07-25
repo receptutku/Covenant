@@ -1,4 +1,4 @@
-import { jsonResponse } from '@/lib/api'
+import { handler, jsonResponse } from '@/lib/api'
 import { isWorldConfigured } from '@/lib/world/verify'
 import { listDroppedEvents, listProperties } from '@/lib/store'
 
@@ -17,8 +17,16 @@ import { listDroppedEvents, listProperties } from '@/lib/store'
  * Deliberately cheap: no chain calls, no Mirror reads. This may be polled every few
  * seconds and must never be why the server feels slow. Deep verification is
  * `npm run preflight`, run by a human before going on stage.
+ *
+ * Wrapped in `handler()` like every other route. It was the one exception, on the reasoning
+ * that reading env vars cannot throw — but `listProperties()` and `listDroppedEvents()` both
+ * reach into the store, and the store has thrown before (a hot-reloaded process kept an
+ * older store object and a newly added field was undefined). An unwrapped throw here skips
+ * the error envelope entirely and hits Next's error page, and this is the endpoint the buyer
+ * screen calls on mount to learn the demo account ids — so its failure mode is every
+ * subsequent call looking like a backend bug.
  */
-export const GET = () =>
+export const GET = handler(async () =>
   jsonResponse({
     ok: true,
     time: new Date().toISOString(),
@@ -42,4 +50,5 @@ export const GET = () =>
       // Treasury, seller, landlord and escrow holder in the demo's role mapping.
       operator: process.env.OPERATOR_ID?.trim() || null,
     },
-  })
+  }),
+)

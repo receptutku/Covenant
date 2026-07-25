@@ -270,6 +270,12 @@ export interface BuyResult {
    * **Do not render the string "2% fee" unless this is `false`.**
    */
   feeFloorApplied: boolean;
+  /**
+   * Present and `true` when this request repeated the same `(propertyId, mode, amount)`
+   * within 30 seconds and was NOT executed again. `transactionId` is the earlier click's —
+   * real, but not new. Absent on a fresh transfer.
+   */
+  replayed?: boolean;
   from: string;
   to: string;
   mode: BuyMode;

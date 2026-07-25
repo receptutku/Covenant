@@ -48,15 +48,50 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * How long the browser waits before giving up.
+ *
+ * Without this the request never ends: `fetch` has no default timeout, so a connection that
+ * opens and then goes quiet — the conference-wifi failure, as opposed to a clean refusal —
+ * leaves the button disabled and reading "Verifying…" forever, with no error and no way to
+ * cancel. That is indistinguishable from a crash to anyone watching, and it is what makes a
+ * presenter reload the page, which loses the seller session and the attestation.
+ *
+ * A bounded wait that ends in a red error card is strictly better than an unbounded one.
+ */
+const DEFAULT_TIMEOUT_MS = 45_000;
+
+/**
+ * Uploads get their own budget: three documents are ~20 MB of base64, and conference
+ * upstream is measured in single-digit Mbps, so the default would abort a submission that
+ * was progressing perfectly well.
+ */
+const UPLOAD_TIMEOUT_MS = 180_000;
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       ...init,
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
-    throw new ApiRequestError("INTERNAL_ERROR", "Could not reach the server.", 500);
+  } catch (error) {
+    // A timeout and a refused connection are both "could not reach the server" to the UI,
+    // but only one of them means the request may have been received and acted on. Saying
+    // which one happened is the difference between "try again" and "check before retrying".
+    const timedOut = error instanceof DOMException && error.name === "TimeoutError";
+    throw new ApiRequestError(
+      "INTERNAL_ERROR",
+      timedOut
+        ? `The server did not answer within ${Math.round(timeoutMs / 1000)}s. It may still be working — check before retrying anything that moves value.`
+        : "Could not reach the server.",
+      500,
+    );
   }
 
   let body: unknown = null;
@@ -79,8 +114,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-function post<T>(path: string, payload: unknown, extraHeaders?: Record<string, string>): Promise<T> {
-  return request<T>(path, { method: "POST", body: JSON.stringify(payload), headers: extraHeaders });
+function post<T>(
+  path: string,
+  payload: unknown,
+  extraHeaders?: Record<string, string>,
+  timeoutMs?: number,
+): Promise<T> {
+  return request<T>(
+    path,
+    { method: "POST", body: JSON.stringify(payload), headers: extraHeaders },
+    timeoutMs,
+  );
 }
 
 function get<T>(path: string, extraHeaders?: Record<string, string>): Promise<T> {
@@ -137,7 +181,9 @@ export function devClearReplay(adminSecret: string): Promise<{ cleared: number; 
 export const realApi: PprevApiClient = {
   onboardSeller: (input: OnboardSellerInput) => post<OnboardSellerResult>("/api/onboard", input),
 
-  submitProperty: (input: SubmitPropertyInput) => post<SubmitPropertyResult>("/api/attest", input),
+  // The only call that carries megabytes; see UPLOAD_TIMEOUT_MS.
+  submitProperty: (input: SubmitPropertyInput) =>
+    post<SubmitPropertyResult>("/api/attest", input, undefined, UPLOAD_TIMEOUT_MS),
 
   listPendingVerifications: () =>
     get<ListPendingVerificationsResult>("/api/verifier/pending", {

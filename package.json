@@ -24,7 +24,8 @@
     "e2e:sale:safe": "tsx scripts/e2e-sale.ts --no-reset",
     "e2e:rental:safe": "tsx scripts/e2e-rental.ts --no-reset",
     "smoke": "tsx scripts/smoke.ts",
-    "stage": "tsx scripts/stage-prep.ts"
+    "stage": "tsx scripts/stage-prep.ts",
+    "test:idem": "tsx scripts/idempotency-test.ts"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",

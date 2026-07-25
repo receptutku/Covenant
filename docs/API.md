@@ -678,6 +678,14 @@ supply of a property token), otherwise `INVALID_INPUT`.
 }
 ```
 
+> A repeat of the same `(propertyId, mode, amount)` within **30 seconds** is not executed
+> again: the first result is returned with `replayed: true` added. A share transfer has no
+> state to conflict with — a second identical one simply succeeds — and buyer1 holds exactly
+> the 100 shares the secondary scene consumes, so a double click does not fail loudly, it
+> leaves the NEXT run to die with `INSUFFICIENT_TOKEN_BALANCE`. If `replayed` is present, the
+> `transactionId` belongs to the earlier click and is real; do not narrate it as a new
+> transfer. A genuine second purchase 30 seconds later goes through normally.
+
 > **Do not print "2% fee" unless `feeFloorApplied` is `false`.** The on-chain fee is
 > `max(1, floor(amount × 2%))` and shares are whole units, so the floor dominates below 50:
 > 10 shares are charged 1 (10%), and **1 share is charged 1 — the recipient receives 0**.

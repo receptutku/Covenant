@@ -44,6 +44,12 @@ export type VerifiedProof = {
   nullifier: string
   /** True when World's backend verified this; false only on the offline dev path. */
   verifiedByWorld: boolean
+  /**
+   * Which environment actually accepted the proof. Worth recording rather than assuming:
+   * a mismatch here is invisible in World's rejection response, so knowing which one
+   * answered is the only way to tell a simulator proof from a real-device one.
+   */
+  environment?: WorldEnvironment
 }
 
 /**
@@ -104,11 +110,15 @@ export function createRpContext(action: WorldAction) {
   }
 }
 
+export type WorldEnvironment = 'staging' | 'production'
+
 /**
- * Staging routes to the World simulator, which is what we test against until beta access
- * for the real credential checks lands.
+ * Staging routes to the World simulator; production routes to the real World App. Per
+ * World's own docs this is a property of the APP registration, not only of the request —
+ * "Staging apps must use the Worldcoin Simulator, whereas production apps will use the
+ * World App" — but it is passed per request, which is what makes a mismatch so hard to see.
  */
-function worldEnvironment(): 'staging' | 'production' {
+function worldEnvironment(): WorldEnvironment {
   return process.env.WORLD_ENVIRONMENT === 'production' ? 'production' : 'staging'
 }
 
@@ -118,6 +128,70 @@ type VerifyResponse = {
   action?: string
   code?: string
   detail?: string
+}
+
+/**
+ * Posts the proof to World, once per environment, and returns whichever attempt answered.
+ *
+ * `environment` is not covered by the RP signature — `signRequest` signs
+ * `version || nonce || createdAt || expiresAt || action?` and nothing else — so it is a
+ * label on the request rather than something the proof commits to. That makes it easy to
+ * get wrong and impossible to diagnose: a proof minted by the real World App (production)
+ * and forwarded as `staging` is rejected with exactly the response a forged proof gets.
+ * That is the failure we hit on a real device, with `WORLD_ENVIRONMENT` simply unset.
+ *
+ * The configured environment is tried FIRST, so the simulator path is unchanged and pays no
+ * extra round trip; the other is tried only when the first is rejected, never when the
+ * request fails to connect — a network failure is not evidence about the environment.
+ *
+ * If our app turns out to be registered for one environment only, this changes nothing
+ * except costing one extra request on a path that was already failing.
+ */
+async function postProof(
+  proof: Record<string, unknown>,
+  action: WorldAction,
+): Promise<{ response: Response; body: VerifyResponse; environment: WorldEnvironment }> {
+  const configured = worldEnvironment()
+  const order: WorldEnvironment[] =
+    configured === 'staging' ? ['staging', 'production'] : ['production', 'staging']
+
+  let last: { response: Response; body: VerifyResponse } | undefined
+
+  for (const environment of order) {
+    let response: Response
+    try {
+      response = await fetch(verifyUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // The IDKit payload is forwarded as-is: it already carries protocol_version, nonce,
+        // action and the responses array in the shape the verifier expects.
+        body: JSON.stringify({ ...proof, environment }),
+        // Undici defaults the body timeout to 300 SECONDS. A connection that opens and then
+        // goes quiet — the conference-wifi failure, not a clean refusal — would leave the
+        // button reading "Verifying…" for five minutes with no error and no way to cancel.
+        signal: AbortSignal.timeout(10_000),
+      })
+    } catch (error) {
+      console.error(`[world] Could not reach the verifier for "${action}":`, error)
+      throw new ApiError('WORLD_PROOF_INVALID', 'Could not reach World to verify this proof.')
+    }
+
+    const body = (await response.json().catch(() => ({}))) as VerifyResponse
+
+    if (response.ok && body.success === true) {
+      if (environment !== configured) {
+        console.warn(
+          `[world] "${action}" verified as ${environment}, not the configured ${configured}. ` +
+            `Set WORLD_ENVIRONMENT=${environment} to make it the default and skip the retry.`,
+        )
+      }
+      return { response, body, environment }
+    }
+
+    last = { response, body }
+  }
+
+  return { ...last!, environment: configured }
 }
 
 /**
@@ -160,21 +234,7 @@ export async function verifyWorldProof(
     }
   }
 
-  let response: Response
-  try {
-    response = await fetch(verifyUrl(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      // The IDKit payload is forwarded as-is: it already carries protocol_version, nonce,
-      // action and the responses array in the shape the verifier expects.
-      body: JSON.stringify({ ...proof, environment: worldEnvironment() }),
-    })
-  } catch (error) {
-    console.error(`[world] Could not reach the verifier for "${action}":`, error)
-    throw new ApiError('WORLD_PROOF_INVALID', 'Could not reach World to verify this proof.')
-  }
-
-  const body = (await response.json().catch(() => ({}))) as VerifyResponse
+  const { response, body, environment } = await postProof(proof, action)
 
   if (!response.ok || body.success !== true) {
     // Only the machine-readable code is logged. The `detail` string is written by World
@@ -197,5 +257,5 @@ export async function verifyWorldProof(
     throw new ApiError('WORLD_PROOF_INVALID', 'This proof was issued for a different action.')
   }
 
-  return { nullifier: body.nullifier, verifiedByWorld: true }
+  return { nullifier: body.nullifier, verifiedByWorld: true, environment }
 }
