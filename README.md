@@ -160,16 +160,49 @@ native Hedera SDK transaction (`TokenCreateTransaction`, `TokenGrantKycTransacti
 
 ## Setup
 
+**Steps 1–7 need nothing from us** — a free funded Hedera testnet account from
+`portal.hedera.com` is enough, and they reproduce every Hedera claim in this README,
+including all three golden scenes. The last two need credentials we cannot hand over; see
+*Running the full demo yourself* below.
+
 ```bash
 npm install
-cp .env.example .env.local     # fill in OPERATOR_ID / OPERATOR_KEY + World credentials
+cp .env.example .env.local
+# Fill in OPERATOR_ID / OPERATOR_KEY, plus NULLIFIER_HMAC_SECRET and DEMO_ADMIN_SECRET
+# (any random strings). Leave AUDIT_TOPIC_ID and SEED_TOKEN_ID EMPTY — bootstrap treats a
+# non-empty value as "already done" and will report success without opening a topic.
+npm run verifier:keygen        # prints VERIFIER_PRIVATE_KEY / VERIFIER_PUBLIC_KEY to paste
 npm run smoke                  # operator alive, key parses, balance sufficient
-npm run accounts:create        # generates buyer1 / buyer2 / nokyc into .env.local
+npm run accounts:create        # ONE TIME — creates buyer1 / buyer2 / nokyc into .env.local.
+                               # Re-running creates three NEW accounts, strands the old ones
+                               # and loses their KYC grants. There is no guard.
 npm run bootstrap              # opens the HCS audit topic
-npm run golden                 # mints the seed token + verifies the three golden moments
-npm run ens:write              # publishes per-property config to ENS (Sepolia)
+npm run golden                 # ONE TIME — mints the seed token and verifies the three
+                               # golden moments. Re-running mints a NEW token: restart the
+                               # dev server and re-run ens:write afterwards.
 npm run dev                    # http://localhost:3000
 ```
+
+Without World credentials, run `npm run dev:noworld` instead: proofs are accepted without
+verification, every acceptance is logged loudly, and a production build refuses to start that
+way. It is the fastest path to seeing the flow work.
+
+### Running the full demo yourself
+
+Two things need accounts that cannot be shared, and this section exists because leaving them
+at their defaults fails in a way that looks like a bug in the code:
+
+- **ENS.** `ENS_PARENT_NAME` defaults to our name, `pprevlisbon.eth`. You cannot write to it —
+  `npm run ens:write` will revert. Worse, ENS *reads* are permissionless, so your server will
+  happily resolve **our** records, and the ENS consistency check will then see a token whose
+  treasury is not your operator and refuse every sale with `ENS_CONFIG_MISMATCH`. That is the
+  guard working correctly on a misconfiguration. Register your own Sepolia name with
+  `npm run ens:register` (needs a funded Sepolia wallet in `ENS_PRIVATE_KEY`), point
+  `ENS_PARENT_NAME` at it, then `npm run ens:write`.
+- **World ID.** Register an app at `developer.world.org` with three incognito actions —
+  `onboard-seller`, `verify-buyer`, `verify-tenant` — and fill in the three values. Ours is a
+  staging registration, which is why verification runs against the World Simulator rather than
+  a phone.
 
 Then seed before any rehearsal — it registers PROP-001 (sale showcase) and PROP-003
 (rental), tops buyer1 back up by recycling shares from buyer2 rather than draining the
@@ -206,11 +239,19 @@ demo mid-run.
 Test suite (all against real testnet, all assert in code):
 
 ```bash
-npm run tamper        # doctored attestations blocked (6 cases)
-npm run merkle        # commitment scheme property tests (no network needed)
-npm run e2e:sale      # full sale flow over HTTP, real token minted
-npm run e2e:rental    # escrow lock/settle/expire, balances read from a consensus node
+# No server, no network:
+npm run merkle             # commitment scheme property tests
+npm run tamper             # doctored attestations blocked (6 cases) — needs VERIFIER_* keys
+npm run test:idem          # the buy replay guard suppresses a double click and nothing else
+
+# Need `npm run dev` running, and DEMO_ADMIN_SECRET set:
+npm run test:ens-guard     # all four ENS verdicts, against the live records
+npm run e2e:sale           # full sale flow over HTTP, real token minted
+npm run e2e:rental         # escrow lock/settle/expire, balances read from a consensus node
 ```
+
+> `e2e:sale` and `e2e:rental` **`POST /api/reset` first** — running one mid-rehearsal wipes
+> the seeded store. Use `npm run e2e:sale:safe` / `npm run e2e:rental:safe` to leave it intact.
 
 ## The minimal verifier boundary
 
@@ -338,10 +379,12 @@ documented in the commit history rather than smoothed over.
 | File | Contents | Owner |
 |---|---|---|
 | [`docs/API.md`](docs/API.md) | API contract — the single source of truth | Recep |
-| `docs/EVIDENCE.md` | Live on-chain evidence links | Recep |
+| [`docs/EVIDENCE.md`](docs/EVIDENCE.md) | Live on-chain evidence links | Recep |
 | [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | ETHGlobal submission text | Akif |
-| `docs/FEEDBACK_selfie.md` | World Selfie Check feedback | Akif (user) + Recep (developer) |
-| `docs/FEEDBACK_identity.md` | World Identity Check feedback | Akif (user) + Recep (developer) |
+| [`docs/FEEDBACK_selfie.md`](docs/FEEDBACK_selfie.md) | World Selfie Check feedback | Akif (user) + Recep (developer) |
+| [`docs/FEEDBACK_identity.md`](docs/FEEDBACK_identity.md) | World Identity Check feedback | Akif (user) + Recep (developer) |
+| [`docs/FEEDBACK_ens.md`](docs/FEEDBACK_ens.md) | ENS v2 alpha feedback — subnames that resolve without registration, and v1-registry invisibility | Recep |
+| [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | Stage ritual, ranked mid-demo failures, and the presenter rules found by walking the flows | Recep |
 
 ## Directory ownership
 

@@ -1,12 +1,11 @@
 // PPREV — Real API client (fetch-based).
-// Unused until Phase A6 — `lib/apiClient.ts` points at the mock until then.
-// As Recep finishes each endpoint, we uncomment the corresponding line in
-// `lib/apiClient.ts` and switch it over one at a time (see SENKRON_PROGRAM.md
-// — A6 is the highest-risk phase).
 //
-// If NEXT_PUBLIC_API_BASE_URL is empty, requests go to the same origin (this
-// Next.js app's own /api routes). If Recep exposes a separate tunnel/deployment
-// URL, fill that variable in .env.local.
+// This is what the app uses: `lib/apiClient.ts` exports `realApi` for every endpoint.
+// `lib/mockApi.ts` is kept in sync as a fallback, so a single method can be swapped back
+// if one endpoint misbehaves — see the note there before doing it.
+//
+// NEXT_PUBLIC_API_BASE_URL is optional. Empty means same origin, which is what the tunnel
+// setup relies on; set it only when the API is served from a different host.
 
 import { ApiRequestError } from "./api-types";
 import type {
