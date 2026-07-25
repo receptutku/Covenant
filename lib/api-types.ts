@@ -1,5 +1,5 @@
 // PPREV — Shared API types (mock and real implementations both use these).
-// Source of truth: docs/API.md — CONTRACT-VERSION: 3
+// Source of truth: docs/API.md — CONTRACT-VERSION: 5
 // Keep this in sync with the version number at the top of docs/API.md.
 
 export type PropertyState =
@@ -121,6 +121,42 @@ export interface SubmitPropertyResult {
   hcs: { topicId: string; sequenceNumber: number };
 }
 
+// ── getProperty (GET /api/property?propertyId=…) ─────────────────────────────
+/**
+ * The server's CURRENT view of one property — what "Refresh status" should call.
+ * Requires `x-seller-session`.
+ *
+ * Do not derive state from the HCS timeline: that is the record of what happened, it is
+ * public, and scanning it for an event name answers a question about the topic rather than
+ * about this property. `rejectionReason` exists ONLY here — only a hash of it goes on-chain,
+ * because a reviewer's free text is the natural place for personal data.
+ */
+export interface PropertyStatusResult {
+  propertyId: string;
+  displayName: string;
+  city: string;
+  sellerAccountId: string;
+  tokenSymbol: string;
+  state: PropertyState;
+  createdAt: string;
+  submittedAt: string | null;
+  decidedAt: string | null;
+  /** The reviewer's full text. Never published on-chain. */
+  rejectionReason: string | null;
+  documentRoot: string | null;
+  documentCount: number;
+  /**
+   * Whether an approval exists — never the approval itself. That signature is the only
+   * credential `/api/tokenize` demands; the seller's UI already holds it from the decision
+   * response.
+   */
+  hasAttestation: boolean;
+  attestationExpiresAt: string | null;
+  tokenId: string | null;
+  hashscanUrl: string | null;
+  files: FileMeta[];
+}
+
 // ── listPendingVerifications ────────────────────────────────────────────────
 export interface PendingVerificationItem {
   propertyId: string;
@@ -223,6 +259,17 @@ export interface BuyResult {
    * transfer list for the same transaction.
    */
   netAmount: number;
+  /**
+   * `feeTotal / amount`, to 4 decimal places. The on-chain fee is
+   * `max(1, floor(amount * 2%))` and shares are whole units, so below 50 the floor
+   * dominates: 10 shares are charged 10%, and 1 share is charged everything.
+   */
+  effectiveFeeRate: number;
+  /**
+   * `true` when the floor pushed the effective rate above 2%.
+   * **Do not render the string "2% fee" unless this is `false`.**
+   */
+  feeFloorApplied: boolean;
   from: string;
   to: string;
   mode: BuyMode;
@@ -258,6 +305,18 @@ export interface SeedResult {
   seeded: true;
   properties: string[];
   tokenId: string;
+  /**
+   * Where the shares ended up after seed moved them back into position. `reached` is the
+   * balance re-read afterwards, not the amount sent — the fee is inclusive, so those differ.
+   * When `ok` is `false` the reservoir is exhausted and the secondary scene will fail.
+   */
+  rebalanced: {
+    buyer1: { sent: number; reached: number; short: number };
+    treasury: { sent: number; reached: number; short: number };
+    ok: boolean;
+  };
+  /** propertyIds of other tokenized properties whose token relationships were repaired. */
+  preparedTokens: string[];
   elapsedMs: number;
 }
 export interface ResetResult {
@@ -292,6 +351,11 @@ export interface RentalListInput {
   propertyId: string;
   reqDeposit: number;
   lockWindowSeconds: number;
+  /**
+   * The advertised rent. It belongs to the LISTING, not to the application: an applicant
+   * who sends their own rent is setting the bar they are judged against.
+   */
+  monthlyRent: number;
 }
 export interface RentalListResult {
   listingId: string;
@@ -299,6 +363,9 @@ export interface RentalListResult {
   state: "LISTED";
   reqDeposit: number;
   lockWindowSeconds: number;
+  monthlyRent: number;
+  /** Where the deposit moves on engage. Show it at listing time, not only after. */
+  escrowAccountId: string;
 }
 
 export interface RentalApplyInput {
@@ -306,16 +373,26 @@ export interface RentalApplyInput {
   tenantAccountId: string;
   proof: unknown;
   action: "verify-tenant";
-  monthlyRent: number;
 }
 export interface RentalApplyResult {
   listingId: string;
   state: "APPLIED";
   tenantAccountId: string;
   predicate: {
+    /** Proven by World. */
     ageEligible: boolean;
+    /** **Asserted, not proven — see `incomeProven`.** */
     incomeThresholdMet: boolean;
     thresholdRule: string;
+    /** `3 x monthlyRent`, derived from the listing. The tenant's income is never collected. */
+    requiredMonthlyEarnings: number;
+    /**
+     * Always `false` in this build. Proving the tenant clears the threshold needs a zkTLS
+     * transcript and a circuit over it; the demo supplies the output, not the proof.
+     * Rendering `incomeThresholdMet` as a verified fact claims something the backend did
+     * not check.
+     */
+    incomeProven: boolean;
   };
 }
 
@@ -377,6 +454,8 @@ export interface PprevApiClient {
   buy(input: BuyInput): Promise<BuyResult>;
   readEns(input: ReadEnsInput): Promise<ReadEnsResult>;
   readAudit(propertyId: string): Promise<ReadAuditResult>;
+  /** Current server-side status of one property — what "Refresh status" should call. */
+  getProperty(propertyId: string, sellerSessionToken: string): Promise<PropertyStatusResult>;
   health(): Promise<HealthResult>;
   seed(): Promise<SeedResult>;
   reset(): Promise<ResetResult>;

@@ -1,4 +1,4 @@
-// CONTRACT-VERSION: 4
+// CONTRACT-VERSION: 5
 //
 // PPREV — Mock API layer.
 // A client-side simulation that mirrors docs/API.md exactly. As Recep's real
@@ -37,6 +37,7 @@ import type {
   ReadEnsInput,
   ReadEnsResult,
   ReadAuditResult,
+  PropertyStatusResult,
   HealthResult,
   SeedResult,
   ResetResult,
@@ -131,6 +132,7 @@ interface RentalRecord {
   state: RentalState;
   reqDeposit: number;
   lockWindowSeconds: number;
+  monthlyRent: number;
   landlordSessionToken: string;
   tenantAccountId?: string;
   lockExpiresAt?: number; // epoch ms
@@ -463,6 +465,11 @@ async function buy(input: BuyInput): Promise<BuyResult> {
     amount: input.amount,
     // Fee is inclusive: the sender is debited `amount`, the recipient credited this.
     netAmount: input.amount - fee,
+    // The real fee is `max(1, floor(amount * 2%))`, so below 50 shares the floor dominates
+    // and the effective rate is not 2% — at 1 share the recipient gets nothing. The mock
+    // reproduces it so the UI is built against the same edge the chain will show.
+    effectiveFeeRate: input.amount > 0 ? Number((fee / input.amount).toFixed(4)) : 0,
+    feeFloorApplied: fee > 0 && fee / input.amount > FRACTIONAL_FEE_BPS / 10000 + 1e-9,
     from,
     to,
     mode: input.mode,
@@ -574,7 +581,62 @@ async function seed(): Promise<SeedResult> {
   pushEvent(property, "OWNERSHIP_APPROVED", {});
   pushEvent(property, "PROPERTY_TOKEN_CREATED", { tokenId });
 
-  return { seeded: true, properties: ["PROP-001"], tokenId, elapsedMs: Date.now() - start };
+  return {
+    seeded: true,
+    properties: ["PROP-001"],
+    tokenId,
+    // The mock has no balances to move, so the targets are always met. The real backend
+    // re-reads them and can come back `ok: false` when the reservoir is exhausted — branch
+    // on `ok`, do not assume it.
+    rebalanced: {
+      buyer1: { sent: 0, reached: 100, short: 0 },
+      treasury: { sent: 0, reached: 300, short: 0 },
+      ok: true,
+    },
+    preparedTokens: [],
+    elapsedMs: Date.now() - start,
+  };
+}
+
+/**
+ * Current server-side view of one property. The seller UI's "Refresh status" reads `state`
+ * from here — never by scanning the audit trail for an event name, which asks a question
+ * about the topic rather than about this property. `rejectionReason` exists only here: only
+ * a hash of the reviewer's text goes on-chain, because free text is where personal data ends
+ * up.
+ */
+async function getProperty(
+  propertyId: string,
+  sellerSessionToken: string,
+): Promise<PropertyStatusResult> {
+  await delay(200);
+  validSession(sellerSessionToken);
+  const property = store.properties.get(propertyId);
+  if (!property) throw new ApiRequestError("PROPERTY_NOT_FOUND", "Property not found.", 404);
+
+  return {
+    propertyId: property.propertyId,
+    displayName: property.displayName,
+    city: property.city,
+    sellerAccountId: property.sellerAccountId,
+    tokenSymbol: property.tokenSymbol,
+    state: property.state,
+    createdAt: property.submittedAt ?? new Date().toISOString(),
+    submittedAt: property.submittedAt ?? null,
+    decidedAt: property.state === "PENDING_REVIEW" ? null : (property.submittedAt ?? null),
+    rejectionReason: property.rejectReason ?? null,
+    documentRoot: property.documentRoot ?? null,
+    documentCount: property.documentCount ?? 0,
+    // A boolean, never the attestation: that signature is the only credential tokenize
+    // demands. The seller UI already holds it from the decision response.
+    hasAttestation: Boolean(property.attestation),
+    attestationExpiresAt: property.attestation?.expiresAt ?? null,
+    tokenId: property.tokenId ?? null,
+    hashscanUrl: property.tokenId
+      ? `https://hashscan.io/testnet/token/${property.tokenId}`
+      : null,
+    files: property.files ?? [],
+  };
 }
 
 async function reset(): Promise<ResetResult> {
@@ -611,6 +673,7 @@ async function rentalList(input: RentalListInput): Promise<RentalListResult> {
     state: "LISTED",
     reqDeposit: input.reqDeposit,
     lockWindowSeconds: input.lockWindowSeconds,
+    monthlyRent: input.monthlyRent,
     landlordSessionToken: input.sellerSessionToken,
   };
   store.rentals.set(listingId, rental);
@@ -622,6 +685,8 @@ async function rentalList(input: RentalListInput): Promise<RentalListResult> {
     state: "LISTED",
     reqDeposit: input.reqDeposit,
     lockWindowSeconds: input.lockWindowSeconds,
+    monthlyRent: input.monthlyRent,
+    escrowAccountId: MOCK_OPERATOR,
   };
 }
 
@@ -638,7 +703,10 @@ async function rentalApply(input: RentalApplyInput): Promise<RentalApplyResult> 
     pushEvent(property, "RENTAL_APPLICATION", {
       listingId: rental.listingId,
       ageEligible: true,
-      incomeThresholdMet: true,
+      // `thresholdMet`, not `incomeThresholdMet` — the real payload guard drops any key
+      // matching /income/, and it silently deleted this whole event twice.
+      thresholdMet: true,
+      requiredMonthlyEarnings: rental.monthlyRent * 3,
     });
   }
 
@@ -646,7 +714,15 @@ async function rentalApply(input: RentalApplyInput): Promise<RentalApplyResult> 
     listingId: rental.listingId,
     state: "APPLIED",
     tenantAccountId: input.tenantAccountId,
-    predicate: { ageEligible: true, incomeThresholdMet: true, thresholdRule: "income >= 3x rent" },
+    predicate: {
+      ageEligible: true,
+      incomeThresholdMet: true,
+      thresholdRule: "income >= 3x rent",
+      // Derived from the LISTING's rent, not from anything the applicant sends.
+      requiredMonthlyEarnings: rental.monthlyRent * 3,
+      // Asserted, never proven — the real backend returns false here too.
+      incomeProven: false,
+    },
   };
 }
 
@@ -750,6 +826,7 @@ export const mockApi: PprevApiClient = {
   buy,
   readEns,
   readAudit,
+  getProperty,
   health,
   seed,
   reset,

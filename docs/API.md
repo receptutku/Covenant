@@ -1,4 +1,4 @@
-CONTRACT-VERSION: 4
+CONTRACT-VERSION: 5
 
 # PPREV API Contract
 
@@ -8,6 +8,20 @@ CONTRACT-VERSION: 4
 > **Versioning rule:** any breaking change bumps the `CONTRACT-VERSION` marker above by 1, adds
 > `BREAKING` to the commit message, and is communicated to the other side. The
 > `// CONTRACT-VERSION: N` comment on the first line of `lib/mockApi.ts` must match that number.
+
+### Changes in v5 (BREAKING)
+
+| What | v4 | v5 |
+|---|---|---|
+| `monthlyRent` | sent by the tenant on `rental/apply` | **required on `rental/list`**, ignored on apply |
+| `rental/apply` predicate | `ageEligible`, `incomeThresholdMet`, `thresholdRule` | adds `requiredMonthlyEarnings` and **`incomeProven` (always `false`)** |
+| `rental/list` response | — | adds `monthlyRent`, `escrowAccountId` |
+| `buy` response | `amount`, `netAmount` | adds **`feeFloorApplied`**, `effectiveFeeRate` |
+| `seed` response | `replenished: {needed, fromBuyer2, fromTreasury}` | `rebalanced: {buyer1, treasury, ok}` |
+| `seed` / `reset` | no auth | **require `x-demo-admin-secret`** (401 `UNAUTHORIZED`) |
+| `GET /api/property` | undocumented | documented — the endpoint "Refresh status" should call |
+
+`lib/api-types.ts` is updated to match; `lib/mockApi.ts` still reads `CONTRACT-VERSION: 4`.
 
 ---
 
@@ -24,8 +38,13 @@ CONTRACT-VERSION: 4
 - UI logic reads **only the `code` field**. The `error` text may change; the `code` never does.
 - Some responses carry extra presentation-only fields alongside `code` (e.g. `hederaStatus`).
   These are meant for display, not for driving logic.
-- No response **ever** contains: a raw World nullifier, a World proof, selfie/identity data,
-  document bytes, a document salt, any private key, or a raw Hedera SDK object.
+- No response contains a raw World nullifier, a World proof, selfie/identity data, document
+  bytes, a document salt, any private key, or a raw Hedera SDK object. This is a property of
+  the handlers — every response is an explicit object literal, never a spread of an internal
+  record — not something a middleware filters afterwards. It was violated once:
+  `GET /api/property` returned the signed attestation, which is the only credential
+  `/api/tokenize` demands, so anyone who could reach the server could have minted someone
+  else's token. It now returns `hasAttestation` and requires a seller session.
 - **Every `POST` endpoint** can return `INVALID_INPUT` (400): the body is parsed by Zod and a
   malformed one never reaches the handler. The message names the offending field paths
   (`files.0.type`) but never their values. It is listed per endpoint below as well, because
@@ -134,7 +153,16 @@ The envelope of every HCS message:
 }
 ```
 
-`payload` **never** contains PII, nullifiers, proofs, document bytes, or salts.
+`payload` must not contain PII, nullifiers, proofs, document bytes, or salts. A runtime guard
+in `lib/hedera/topic.ts` enforces this — but it matches key **names** against a regex, not
+values, so it is a backstop, not a proof. It has fired twice, and both times it deleted the
+event rather than the offending field: a `RENTAL_APPLICATION` vanished from the timeline
+because the key was called `incomeThresholdMet`. Dropped events are counted, surfaced on
+`/api/health`, and **fail `npm run preflight`**, so a silent hole in the trail is not possible.
+
+> Honest note for anyone reading the live topic: messages before sequence ~197 predate the
+> `city` field being stripped from `PROPERTY_SUBMITTED`, and HCS is append-only, so they are
+> still there. That is what a permanent audit log does to your own mistakes.
 
 ---
 
@@ -295,6 +323,67 @@ bytes disagree with its declared `type` (a `.exe` labelled `application/pdf`), o
 > and the seeded `PROP-001` is exactly such a property.
 
 **HCS:** `PROPERTY_SUBMITTED` — payload: `{ documentRoot, documentCount, city }`
+
+---
+
+## `GET /api/property?propertyId=PROP-002` — Current status of one property
+
+**Header:** `x-seller-session: <sellerSessionToken>` (or `?sellerSessionToken=` as a fallback).
+
+> **This is the endpoint the seller's "Refresh status" button should call.** Do not derive
+> state from the HCS timeline. The timeline is the record of what *happened* and is public and
+> permanent; this is the server's *current* view. Two things follow from that difference:
+>
+> - Deriving state by scanning the trail for an event name — e.g. "is `PROPERTY_TOKEN_CREATED`
+>   anywhere in the list" — answers a question about the topic, not about this property, and
+>   there is no ordering guarantee to lean on either. Read `state` from here.
+> - **`rejectionReason` exists only here.** A reviewer's free text is the natural place for
+>   personal data ("the deed lists a date of birth…"), so only a hash of it goes on-chain. A UI
+>   reading `payload.reason` from HCS will show "not specified" for every rejection.
+
+**Response 200**
+
+```json
+{
+  "propertyId": "PROP-002",
+  "displayName": "Alfama 2+1",
+  "city": "Lisbon",
+  "sellerAccountId": "0.0.123456",
+  "tokenSymbol": "ALFM",
+  "state": "APPROVED",
+  "createdAt": "2026-07-24T10:15:00.000Z",
+  "submittedAt": "2026-07-24T10:15:00.000Z",
+  "decidedAt": "2026-07-24T10:16:30.000Z",
+  "rejectionReason": null,
+  "documentRoot": "0xabc...",
+  "documentCount": 2,
+  "hasAttestation": true,
+  "attestationExpiresAt": "2026-07-24T10:31:30.000Z",
+  "tokenId": null,
+  "hashscanUrl": null,
+  "files": [{ "name": "title-deed.pdf", "type": "application/pdf", "sizeBytes": 184320 }]
+}
+```
+
+Metadata only. Document bytes, salts and per-file commitments never leave the server;
+`documentRoot` and `documentCount` are the whole disclosure.
+
+> **`hasAttestation` is a boolean, and the attestation itself is deliberately not here.** That
+> signature is the only credential `/api/tokenize` demands — returning it from a status
+> endpoint would let any reader mint someone else's token. The seller's UI already holds it
+> from the `/api/verifier/decision` response; keep it in memory there.
+>
+> Honest limitation: a seller session is not bound to a property or an account, so any session
+> holder can read any property's status. That is the same account-binding gap documented for
+> buyer KYC. It is a real improvement over anonymous access, not a complete answer.
+
+Drive the seller UI from `state` and `hasAttestation`: show the Tokenize button when
+`state === "APPROVED"`, and only after `state === "TOKENIZED"` show `tokenId` / `hashscanUrl`.
+
+**Errors:** `SELLER_SESSION_REQUIRED` (401), `SELLER_SESSION_EXPIRED` (401),
+`PROPERTY_NOT_FOUND` (404), `INVALID_INPUT` (400 — no `propertyId`)
+
+**HCS:** none — this endpoint only reads.
 
 ---
 
@@ -581,11 +670,22 @@ supply of a property token), otherwise `INVALID_INPUT`.
 {
   "amount": 100,
   "netAmount": 98,
+  "feeFloorApplied": false,
+  "effectiveFeeRate": 0.02,
   "assessedCustomFees": [
     { "amount": 2, "tokenId": "0.0.222333", "collectorAccountId": "0.0.1001" }
   ]
 }
 ```
+
+> **Do not print "2% fee" unless `feeFloorApplied` is `false`.** The on-chain fee is
+> `max(1, floor(amount × 2%))` and shares are whole units, so the floor dominates below 50:
+> 10 shares are charged 1 (10%), and **1 share is charged 1 — the recipient receives 0**.
+> Verified on testnet. `effectiveFeeRate` is the rate actually charged (`feeTotal / amount`,
+> 4 dp); `feeFloorApplied` is `true` whenever that exceeds 2%. Both fields are present on
+> every mode. The demo uses `amount: 100`, where the floor never binds — these fields exist
+> so a judge typing a small number into the UI does not catch it narrating a rate it is not
+> charging.
 
 > **`netAmount` is the number to put in front of the user, not `amount`.** The 2% fractional
 > fee is **INCLUSIVE**: on a secondary transfer of 100 the sender is debited 100, the
@@ -765,6 +865,10 @@ shorter (this is not an error). Messages not paid for by the operator account ar
 
 ## `POST /api/seed` — Demo state setup (development only)
 
+**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>` — required. Without it, `401` /
+`UNAUTHORIZED`. Seed and reset move real shares and wipe live state, so they are guarded
+exactly like the `/api/dev/*` endpoints below.
+
 Writes **two** properties into the store:
 
 - `PROP-001` — `TOKENIZED` with the real `SEED_TOKEN_ID`, for the pre-baked sale scenes.
@@ -783,26 +887,42 @@ moment). Every step is idempotent, so re-seeding between rehearsals is safe.
   "seeded": true,
   "properties": ["PROP-001", "PROP-003"],
   "tokenId": "0.0.222111",
-  "replenished": { "needed": 100, "fromBuyer2": 105, "fromTreasury": 0 },
+  "rebalanced": {
+    "buyer1": { "sent": 105, "reached": 100, "short": 0 },
+    "treasury": { "sent": 0, "reached": 312, "short": 0 },
+    "ok": true
+  },
   "preparedTokens": ["PROP-002"],
   "elapsedMs": 2400
 }
 ```
 
-`replenished` reports how buyer1's shares were restored for the secondary-market scene:
-`needed` is the shortfall against the 100 shares that scene consumes, `fromBuyer2` is what was
-swept back from buyer2 (the transfer itself pays the 2% fee, so slightly more is moved than is
-needed), and `fromTreasury` is the remainder. All three are `0` when buyer1 already holds
-enough. `preparedTokens` lists the propertyIds of any OTHER tokenized properties whose token
-relationships were repaired — a token minted during a live run starts with no associations at
-all, which is how the no-KYC scene once failed with `TOKEN_NOT_ASSOCIATED` on the live
-property while working on the seeded one. A property whose repair failed is logged and skipped,
-not listed.
+`rebalanced` reports how the shares were moved back into position for the next run. Supply is
+fixed at 1000 and nothing is ever destroyed, so this is not a top-up — it is moving the same
+shares back to where the scenes expect them. Two sinks drain in opposite directions: the fee
+scene moves 100 from buyer1 to buyer2 every run, and the primary sale drains the treasury with
+only the 2% fee coming back. Both refill from buyer2, the only account holding shares the demo
+has no further use for.
+
+For each of `buyer1` and `treasury`: `sent` is what was transferred, `reached` is the balance
+**re-read afterwards**, and `short` is how far below target that balance still is. `ok` is
+`true` only when both are `0` short. The distinction matters — the fee is inclusive, so the
+recipient is credited less than was sent, and an earlier version reported the amount sent and
+returned `200` while the target went unmet. `preparedTokens` lists the propertyIds of any OTHER
+tokenized properties whose token relationships were repaired — a token minted during a live run
+starts with no associations at all, which is how the no-KYC scene once failed with
+`TOKEN_NOT_ASSOCIATED` on the live property while working on the seeded one. A property whose
+repair failed is logged and skipped, not listed.
+
+> If `ok` is `false`, buyer2 is exhausted and the secondary scene will fail mid-narration.
+> `npm run stage` exits non-zero on this; `npm run preflight` reports the balances.
 
 **Errors:** `INTERNAL_ERROR` (500 — `SEED_TOKEN_ID` is not configured; run `npm run golden`
 once to mint the seed token)
 
 ## `POST /api/reset` — Clears the store (development only)
+
+**Header:** `x-demo-admin-secret: <DEMO_ADMIN_SECRET>` — required, as for seed above.
 
 ```json
 { "reset": true }
@@ -813,7 +933,12 @@ listing counter (so ids start again at `RENT-001`). On-chain artefacts are perma
 untouched. To clear *only* the proof digests, use `/api/dev/clear-replay` below — a full reset
 costs a reseed.
 
-Both endpoints return `404` with `code: "PROPERTY_NOT_FOUND"` in production.
+Both endpoints return `404` with `code: "PROPERTY_NOT_FOUND"` in production, and `401` with
+`code: "UNAUTHORIZED"` when the admin secret is missing or wrong.
+
+The drop counter is deliberately NOT cleared by reset. It lives outside the resettable store,
+because `npm run stage` resets immediately before preflight reads it — a counter that reset
+wiped could only ever report its own run.
 
 ---
 
@@ -963,6 +1088,7 @@ seller onboarding).
 |---|---|
 | `reqDeposit` | `> 0`, `≤ 10000`, and must land on a whole **tinybar** — at most 8 decimal places |
 | `lockWindowSeconds` | integer, `≥ 10`, `≤ 86400` |
+| `monthlyRent` | `> 0`, `≤ 10000`, whole tinybars — the advertised rent |
 
 > The tinybar rule is not pedantry: Hedera rejects a finer amount with
 > `Hbar in tinybars contains decimals`, and without this check that surfaces as an unhandled
@@ -983,9 +1109,15 @@ seller onboarding).
   "state": "LISTED",
   "reqDeposit": 50,
   "lockWindowSeconds": 600,
+  "monthlyRent": 15,
   "escrowAccountId": "0.0.1001"
 }
 ```
+
+> **`monthlyRent` belongs to the listing, not to the application.** It used to be sent by the
+> applicant, which meant the applicant set the bar they would be judged against —
+> `monthlyRent: 0.01` published a threshold of `0.03` and a cheerful `thresholdMet: true`.
+> The landlord advertises the rent; the tenant responds to it.
 
 `escrowAccountId` is the account the deposit will move into on `engage` — in this demo the
 operator account (the README is explicit that a custodial escrow is a demo simplification).
@@ -1008,19 +1140,31 @@ it is already `TOKENIZED`), `INVALID_INPUT` (400)
   "listingId": "RENT-001",
   "tenantAccountId": "0.0.654321",
   "proof": { "...": "IDKit Identity payload" },
-  "action": "verify-tenant",
-  "monthlyRent": 15
+  "action": "verify-tenant"
 }
 ```
 
 > `verify-tenant` is **separate** from the buyer action — so that the nullifier pool stays
 > isolated and the same test user can demonstrate both the sale and the rental flow.
 
-Predicate: age eligibility (World) plus an income threshold (`income ≥ 3 × rent`, without
-revealing the exact amount).
+Predicate: age eligibility (proven by World) plus an income threshold
+(`income ≥ 3 × rent`).
 
-`monthlyRent` is required and must be `> 0` and `≤ 10000`, otherwise `INVALID_INPUT`. It never
-leaves the server: only the boolean result of the predicate reaches the response and HCS.
+> **`incomeThresholdMet` is asserted, not proven — `incomeProven` is `false` and says so.**
+> Read it before rendering anything. The threshold itself is real: it is computed as
+> `3 × monthlyRent` from the listing, so `requiredMonthlyEarnings` is a genuine consequence of
+> a real input rather than decoration. What the demo does not have is evidence that the tenant
+> clears it — that needs a zkTLS transcript from a bank or payroll provider and a circuit that
+> evaluates the predicate over it, which is the roadmap item this endpoint is shaped around.
+> The protocol shows where that proof plugs in and what it must output; the demo supplies the
+> output. A UI that renders this as a verified fact is claiming something the backend did not
+> check.
+>
+> The tenant's income is never collected, never sent, and never recorded — there is no field
+> for it. What reaches HCS is the boolean, the rule, and `requiredMonthlyEarnings`, which is
+> derived from the rent the landlord already published in the listing. Recording the threshold
+> is deliberate: it lets anyone verify the bar was set where the protocol says, without
+> anyone's finances being on-chain.
 
 **Response 200**
 
@@ -1032,7 +1176,9 @@ leaves the server: only the boolean result of the predicate reaches the response
   "predicate": {
     "ageEligible": true,
     "incomeThresholdMet": true,
-    "thresholdRule": "income >= 3x rent"
+    "thresholdRule": "income >= 3x rent",
+    "requiredMonthlyEarnings": 45,
+    "incomeProven": false
   }
 }
 ```
@@ -1043,7 +1189,10 @@ listings, there is no separate `LISTING_NOT_FOUND`), `RENTAL_NOT_ENGAGED` (422 �
 is not `LISTED`, i.e. a tenant has already applied or the escrow has moved on),
 `INVALID_INPUT` (400)
 
-**HCS:** `RENTAL_APPLICATION` — the payload carries only the predicate result, never the amount.
+**HCS:** `RENTAL_APPLICATION` — carries `ageEligible`, `thresholdMet`, `thresholdRule` and
+`requiredMonthlyEarnings` (the public `3 × rent` figure). No income figure exists to publish.
+The key is `thresholdMet`, not `incomeThresholdMet`: the payload guard drops any key matching
+`/income/`, and it silently deleted this entire event twice before the field was renamed.
 
 ---
 

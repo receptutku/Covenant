@@ -30,6 +30,7 @@ import type {
   ReadEnsInput,
   ReadEnsResult,
   ReadAuditResult,
+  PropertyStatusResult,
   HealthResult,
   SeedResult,
   ResetResult,
@@ -161,11 +162,20 @@ export const realApi: PprevApiClient = {
   readAudit: (propertyId: string) =>
     get<ReadAuditResult>(`/api/audit?propertyId=${encodeURIComponent(propertyId)}`),
 
+  // Read `state` from here, never from the audit trail: HCS records what happened and is
+  // public, so `rejectionReason` is only ever a hash there. This is the server's current view.
+  getProperty: (propertyId: string, sellerSessionToken: string) =>
+    get<PropertyStatusResult>(`/api/property?propertyId=${encodeURIComponent(propertyId)}`, {
+      "x-seller-session": sellerSessionToken,
+    }),
+
   health: () => get<HealthResult>("/api/health"),
 
-  seed: () => post<SeedResult>("/api/seed", {}),
+  // Both require the admin secret: they move real shares and wipe live state. Without the
+  // header they return 401 UNAUTHORIZED, which is what the seed button was hitting.
+  seed: () => post<SeedResult>("/api/seed", {}, { "x-demo-admin-secret": demoAdminSecret }),
 
-  reset: () => post<ResetResult>("/api/reset", {}),
+  reset: () => post<ResetResult>("/api/reset", {}, { "x-demo-admin-secret": demoAdminSecret }),
 
   rentalList: (input: RentalListInput) => post<RentalListResult>("/api/rental/list", input),
 
