@@ -434,6 +434,28 @@ export function BuyerView() {
             ) : (
               <p className="mt-2 text-xs text-emerald-600">No fee (treasury exemption — expected behavior).</p>
             )}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {/*
+                Only `match` is allowed to claim ENS confirmed anything: `unavailable`
+                covers the env fallback, which is our own configuration read back to
+                us, and `stale` is a legitimate few-second window after a mint.
+              */}
+              {buyResult.ensCheck === "match" ? (
+                <StatusBadge status="success">ENS confirmed the token before the transfer</StatusBadge>
+              ) : buyResult.ensCheck === "stale" ? (
+                <StatusBadge status="pending">ENS record still names the previous token (republishing)</StatusBadge>
+              ) : (
+                <StatusBadge status="idle">ENS unavailable — fell back to local config</StatusBadge>
+              )}
+            </div>
+
+            {buyResult.replayed && (
+              <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                Nothing moved: this repeated the previous request within 30 seconds and was not executed again.
+                The transaction below is the earlier one — real, but not new.
+              </p>
+            )}
+
             <EvidenceLink href={buyResult.hashscanUrl} label="View on HashScan" />
           </div>
         )}

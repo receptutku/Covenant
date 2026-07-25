@@ -97,16 +97,18 @@ söyle; uzun gerekçeler bir sonraki bölümde, sadece soru gelirse aç.
 > **World ID — The person.** Proves a unique human over 18. We receive a nullifier, never an
 > identity.
 
-> **ENS — Each property's ENS record carries the protocol config the client resolves before
-> the flow renders.**
+> **ENS — ENS is checked before every share transfer and can refuse one. A record naming a
+> token this protocol did not create returns `ENS_CONFIG_MISMATCH`, and nothing moves.**
 
-⚠️ **ENS cümlesi için:** Recep ENS'i bağlayıcı hâle getirme işini bitirdiğinde haber verecek.
-Ancak o zaman şununla değiştir:
+⚠️ **"ENS is the source of truth" deme.** Token id hâlâ sunucunun kaydından geliyor; ENS onun
+üzerindeki kontrol. Doğru kelime **checked**, "authoritative" değil. Jüri bu farkı sorarsa
+hazırlıksız yakalanma:
 
-> **Shares don't move unless ENS and our server agree on which token the property uses.**
+> **"Checked, not yet authoritative — the token id still comes from our record, and ENS is**
+> **the check on top of it. Making ENS authoritative for settlement is the next step."**
 
-Bunu erken söyleme. Şu anda ENS kayıtlarını silsen hiçbir şey bozulmuyor — doğru olmayan bir
-iddiayı en görünür yere koymuş oluruz ve jürinin ilk sorusu tam o olur.
+**Türkçe:** Kontrol ediliyor, henüz yetkili değil — token id hâlâ bizim kaydımızdan geliyor,
+ENS onun üzerindeki kontrol. ENS'i mutabakat için yetkili kılmak bir sonraki adım.
 
 ---
 
