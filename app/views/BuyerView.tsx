@@ -62,7 +62,12 @@ export function BuyerView() {
       // /api/seed is admin-guarded too. Without this the button 401s unless the
       // verifier panel happens to have been unlocked first — an invisible
       // ordering dependency between two unrelated columns.
-      setDemoAdminSecret(adminSecret.trim());
+      //
+      // Only when a secret was actually typed. Writing an empty string here revoked the
+      // one the verifier panel had already been given, so seed failed AND the verifier's
+      // next Approve failed, in another column, with nothing on screen connecting the two.
+      const secret = adminSecret.trim();
+      if (secret) setDemoAdminSecret(secret);
       const res = await api.seed();
       setSeedResult(res);
     } catch (e) {
@@ -163,7 +168,7 @@ export function BuyerView() {
       >
         <button
           onClick={handleSeed}
-          disabled={busy === "seed"}
+          disabled={busy === "seed" || !adminSecret.trim()}
           className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
         >
           {busy === "seed" ? "Seeding..." : "Seed PROP-001"}
@@ -173,7 +178,7 @@ export function BuyerView() {
             Seeded {seedResult.properties.join(", ")} · token {seedResult.tokenId} · {seedResult.elapsedMs}ms
             {!seedResult.rebalanced.ok && (
               <span className="block text-amber-600">
-                Share reservoir exhausted — the secondary scene will fail. Tell Recep before rehearsing.
+                Share reservoir exhausted — the secondary scene will fail. Run `npm run stage` before presenting.
               </span>
             )}
           </p>
@@ -327,12 +332,12 @@ export function BuyerView() {
             <EvidenceLink href={kyc.hashscanUrl} label="View on HashScan" />
           </div>
         )}
-        <PrivacyNote>Only age≥18 and jurisdiction are requested; no name, address, or document image is collected, and the raw proof is never stored.</PrivacyNote>
+        <PrivacyNote>Only age≥18 is requested; no name, address, nationality, or document image is collected, and the raw proof is never stored.</PrivacyNote>
       </ActionCard>
 
       <ActionCard
         title="4. Buy"
-        description="primary: fresh property (treasury exemption, no fee) · secondary: buyer1→buyer2 (2% fee) · nokyc: deliberate rejection"
+        description="primary: fresh property (treasury exemption, no fee) · secondary: buyer1→buyer2 (2% fee above 50 shares — below that the 1-share floor dominates) · nokyc: deliberate rejection"
       >
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -341,18 +346,22 @@ export function BuyerView() {
             className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
           >
             <option value="primary">primary (operator → buyer)</option>
-            <option value="secondary">secondary (buyer1 → buyer2, 2% fee)</option>
+            <option value="secondary">secondary (buyer1 → buyer2, 2% fee at 100 shares)</option>
             <option value="nokyc">nokyc (operator → nokyc — expect REJECTION)</option>
           </select>
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(Number(e.target.value))}
+            min={1}
+            max={1000}
             className="w-24 rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
           />
           <button
             onClick={doBuy}
-            disabled={busy === "buy"}
+            // An empty field is Number("") === 0 and junk is NaN; both are rejected by the
+            // server as INVALID_INPUT. A disabled button says so before the round trip.
+            disabled={busy === "buy" || !Number.isInteger(amount) || amount < 1 || amount > 1000}
             className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
           >
             {busy === "buy" ? "Processing..." : "Buy / attempt"}
@@ -393,9 +402,9 @@ export function BuyerView() {
                   rate is not 2%. Saying "2%" there would be false on-screen.
                 */}
                 {buyResult.feeFloorApplied
-                  ? `Fee floor applied: 1 share minimum, an effective ${(buyResult.effectiveFeeRate * 100).toFixed(
-                      1,
-                    )}% on this size.`
+                  ? `The fee floor applied: 1 share minimum, an effective ${(
+                      buyResult.effectiveFeeRate * 100
+                    ).toFixed(1)}% at this size, not 2%`
                   : "The 2% fee"}{" "}
                 was assessed by Hedera itself and routed to {buyResult.assessedCustomFees[0].collectorAccountId} — the
                 app never moves it.
@@ -412,7 +421,11 @@ export function BuyerView() {
         <ErrorCard
           error={error}
           note={
-            error instanceof ApiRequestError && error.code === "KYC_DENIED"
+            // Gated on hederaStatus, not on the code alone: /api/kyc also returns KYC_DENIED
+            // from an application-level guard on the reserved nokyc account, and asserting
+            // "the network refused this" over a refusal our own code made would be false in
+            // the one scene whose entire point is that the network did it.
+            error instanceof ApiRequestError && error.code === "KYC_DENIED" && Boolean(error.hederaStatus)
               ? "Golden scene: the compliance gate runs at the network level — a transfer to an unverified wallet is rejected by the protocol."
               : undefined
           }

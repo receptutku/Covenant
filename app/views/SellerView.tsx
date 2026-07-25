@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api, ApiRequestError } from "@/lib/apiClient";
 import { devIssueSellerSession } from "@/lib/realApi";
 import type { Attestation } from "@/lib/api-types";
@@ -33,8 +33,23 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
   const [propertyId, setPropertyId] = useState("PROP-002");
   const [displayName, setDisplayName] = useState("Alfama 2BR");
   const [city, setCity] = useState("Lisbon");
-  const [sellerAccountId, setSellerAccountId] = useState("0.0.123456");
+  // Filled from /api/health on mount. A hard-coded id is exactly what that endpoint exists
+  // to kill: this one is invented, it is visible on screen during the pitch, it is echoed
+  // into the verifier's queue card, and it is signed into the attestation.
+  const [sellerAccountId, setSellerAccountId] = useState("");
   const [tokenSymbol, setTokenSymbol] = useState("ALFM");
+
+  // The operator is the seller/landlord in the demo's role mapping, and /api/health is the
+  // only trustworthy source for it: the ids differ per environment and per .env, so anything
+  // typed into source is a lie waiting to be shown on a projector.
+  useEffect(() => {
+    api
+      .health()
+      .then((h) => setSellerAccountId((current) => current || (h.demoAccounts.operator ?? "")))
+      .catch(() => {
+        /* leave it empty — an empty required field is honest, an invented id is not */
+      });
+  }, []);
   const [files, setFiles] = useState<File[]>([]);
 
   const [busy, setBusy] = useState<string | null>(null);
@@ -107,6 +122,9 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
     }
   }
 
+  // Whether the SERVER holds an approval — not whether this tab holds the signature.
+  const [attestationOnServer, setAttestationOnServer] = useState(false);
+
   async function handleRefreshStatus() {
     if (!session) return;
     setBusy("refresh");
@@ -121,6 +139,10 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
       const res = await api.getProperty(propertyId, session.token);
       setPropertyState(res.state);
       setRejectReason(res.rejectionReason);
+      // The server knows an approval exists; only this browser tab holds the signature
+      // itself. After a reload the two disagree, and the seller would otherwise get an
+      // APPROVED badge, a Tokenize button, and a bare thrown Error on clicking it.
+      setAttestationOnServer(res.hasAttestation);
       if (res.tokenId && res.hashscanUrl) {
         setTokenizeResult({ tokenId: res.tokenId, hashscanUrl: res.hashscanUrl });
       }
@@ -293,7 +315,9 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
             {propertyState === "TOKENIZED" && <StatusBadge status="success">Tokenized</StatusBadge>}
             <button
               onClick={handleRefreshStatus}
-              disabled={busy === "refresh"}
+              // Without a session the handler returns immediately: no spinner, no error,
+              // no state change. A dead button reads as a broken app.
+              disabled={busy === "refresh" || !session}
               className="rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700"
             >
               {busy === "refresh" ? "..." : "Refresh status"}
@@ -307,9 +331,16 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
 
       {propertyState === "APPROVED" && (
         <ActionCard title="4. Tokenize" description="Only runs for a valid, signed APPROVED record.">
+          {attestationOnServer && !attestations[propertyId] && (
+            <p className="mb-2 text-xs text-amber-600">
+              The server holds an approval for this property, but this browser no longer has the
+              signature — it is kept in memory only and a page reload discards it. Re-submit and
+              have it approved again, or use the dev session helper.
+            </p>
+          )}
           <button
             onClick={handleTokenize}
-            disabled={busy === "tokenize"}
+            disabled={busy === "tokenize" || !attestations[propertyId]}
             className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
           >
             {busy === "tokenize" ? "Tokenizing..." : "Tokenize (HTS)"}
@@ -324,7 +355,16 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
         </ActionCard>
       )}
 
-      {error && <ErrorCard error={error} />}
+      {error && (
+        <ErrorCard
+          error={error}
+          note={
+            error instanceof ApiRequestError && error.code === "WORLD_PROOF_REPLAY"
+              ? "A World nullifier is derived from (identity, app, action), so it is the same value every time one person repeats one check — the second rehearsal always lands here. Clear it with the \u201cClear World replay guard\u201d button in the Buyer column."
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }

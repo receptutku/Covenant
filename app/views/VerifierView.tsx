@@ -9,6 +9,20 @@ import { StatusBadge } from "@/app/components/common/StatusBadge";
 import { ErrorCard } from "@/app/components/common/ErrorCard";
 import { PrivacyNote } from "@/app/components/common/PrivacyNote";
 
+type ReviewChecks = {
+  readable: boolean;
+  matchesForm: boolean;
+  ownerMatch: boolean;
+  sufficient: boolean;
+};
+
+const EMPTY_CHECKS: ReviewChecks = {
+  readable: false,
+  matchesForm: false,
+  ownerMatch: false,
+  sufficient: false,
+};
+
 export function VerifierView({ onApproved }: { onApproved: (propertyId: string, attestation: Attestation) => void }) {
   const [adminSecret, setAdminSecret] = useState("");
   const [unlocked, setUnlocked] = useState(false);
@@ -18,9 +32,16 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
   const [reason, setReason] = useState("");
   const [lastAttestation, setLastAttestation] = useState<Attestation | null>(null);
   const [tamperResult, setTamperResult] = useState<"idle" | "blocked" | "unexpected">("idle");
-  const [checks, setChecks] = useState({ readable: false, matchesForm: false, ownerMatch: false, sufficient: false });
+  // Keyed by propertyId. One shared object meant ticking the four boxes for one property
+  // enabled Approve for every other item in the queue, and the ticks survived the decision —
+  // which empties the four checkboxes of the only thing they are there to assert: that a
+  // human looked at THIS document.
+  const [checksByProperty, setChecksByProperty] = useState<Record<string, ReviewChecks>>({});
 
-  const allChecked = Object.values(checks).every(Boolean);
+  const checksFor = (propertyId: string): ReviewChecks =>
+    checksByProperty[propertyId] ?? EMPTY_CHECKS;
+
+  const allCheckedFor = (propertyId: string) => Object.values(checksFor(propertyId)).every(Boolean);
 
   async function loadPending() {
     if (!adminSecret.trim()) return;
@@ -127,8 +148,16 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
               <label key={c.key} className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={checks[c.key as keyof typeof checks]}
-                  onChange={(e) => setChecks((prev) => ({ ...prev, [c.key]: e.target.checked }))}
+                  checked={checksFor(item.propertyId)[c.key as keyof ReviewChecks]}
+                  onChange={(e) =>
+                    setChecksByProperty((prev) => ({
+                      ...prev,
+                      [item.propertyId]: {
+                        ...(prev[item.propertyId] ?? EMPTY_CHECKS),
+                        [c.key]: e.target.checked,
+                      },
+                    }))
+                  }
                 />
                 {c.label}
               </label>
@@ -138,7 +167,7 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => decide(item.propertyId, "APPROVED")}
-              disabled={!allChecked || busy === item.propertyId + "APPROVED"}
+              disabled={!allCheckedFor(item.propertyId) || busy === item.propertyId + "APPROVED"}
               className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
             >
               Approve
@@ -182,7 +211,7 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
             )}
             {tamperResult === "unexpected" && (
               <p className="mt-2 text-sm text-red-600">
-                ⚠ Unexpected: the tampered attestation was accepted — this is a security bug, report it to Recep.
+                ⚠ Unexpected: the tampered attestation was accepted. This is a security bug — stop the demo.
               </p>
             )}
           </div>
