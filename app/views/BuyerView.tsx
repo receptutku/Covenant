@@ -224,7 +224,7 @@ export function BuyerView() {
       <ActionCard
         title="0. Pick a property"
         description="Golden scenes run on PROP-001; type any live property id."
-        techNote="Discovery is live; settlement is not. The client resolves each property's config from ENS before it renders, but transfers still read the token from the server's own record."
+        techNote="Discovery is live and settlement is checked. The client resolves each property's config from ENS on demand, and before any share moves /api/buy refuses the transfer if ENS names a token this protocol did not create. ENS is the check, not yet the source of the token id."
         active={step === 0}
       >
         <div className="flex flex-wrap items-center gap-2">
