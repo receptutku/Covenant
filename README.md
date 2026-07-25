@@ -100,7 +100,7 @@ instead of a share transfer. One core, two modes.
 |---|---|---|
 | **Hedera** | HTS token with a KYC key and an immutable 2% fractional fee; HCS append-only audit topic; Mirror Node as the read path for everything the UI claims. No Solidity — every operation is a native SDK transaction. | [`docs/EVIDENCE.md`](docs/EVIDENCE.md) · `npm run e2e:sale` |
 | **World** | World ID 4.0 with three separate actions (`onboard-seller`, `verify-buyer`, `verify-tenant`) so one person can be a seller, a buyer and a tenant without burning a nullifier. Proofs are re-verified server-side; `success: true` from the client is never trusted. | [`docs/FEEDBACK_selfie.md`](docs/FEEDBACK_selfie.md) · [`docs/FEEDBACK_identity.md`](docs/FEEDBACK_identity.md) |
-| **ENS** | Per-property subnames on the ENSv2 alpha carrying protocol config as text records, written programmatically and resolved live before the buyer flow renders. Degrades to a marked env-fallback rather than taking the demo down. | `npm run ens:write` · the ENS panel in the Buyer column |
+| **ENS** | Per-property subnames on the ENSv2 alpha carrying protocol config as text records, written programmatically and resolved live before the buyer flow renders. **ENS is checked before every share transfer and can refuse one:** a record naming a token this protocol did not create returns `ENS_CONFIG_MISMATCH` and nothing moves. A stale record does not block, and neither does an unreachable resolver — only a substituted one. | `npm run test:ens-guard` (4/4, live records) · `npm run ens:write` · the ENS panel in the Buyer column |
 
 <!-- ═══════════ END OF TOP HALF ═══════════ -->
 
@@ -277,10 +277,24 @@ and a client learns which token a property uses by asking Sepolia rather than by
 us. Resolution sits behind a 60-second in-memory cache (8 seconds when the answer is an
 env fallback, so a degraded response cannot outlive the outage), and `/api/tokenize` drops
 the cached entry as it writes — a freshly minted token id resolves immediately rather than
-up to a minute later. What it is *not*, in this build, is the settlement path — transfers read the
-token from the server's own record, not from ENS. Making ENS authoritative for settlement
-is the honest next step; claiming it already is would be an overstatement, and the code is
-right there to check.
+up to a minute later. ENS is also **checked at settlement**, which is the part worth being precise about.
+`/api/buy` resolves the property's `propertyTokenId` before any share moves and refuses the
+transfer — `ENS_CONFIG_MISMATCH`, nothing moved — if the record names a token this protocol
+did not create. Deleting or repointing a record is therefore not cosmetic: it can stop a sale.
+
+What ENS does *not* yet do is **supply** the token id; that still comes from the server's own
+record, with ENS as the check on it. Source rather than check is the honest next step.
+
+The rule is asymmetric on purpose, and the asymmetry is where the thinking is. A record that
+is merely behind does not block — `/api/tokenize` republishes in the background, so a buy
+seconds after a mint legitimately still sees the previous token, and refusing there would kill
+a real sale rather than an attack. Neither does an unreachable resolver: giving a Sepolia
+outage the power to stop a Hedera transfer is worse than the substitution it would prevent.
+Only a record naming a token whose treasury is not ours blocks, because that is the only case
+that is someone else's doing — and "ours" is decided by Hedera, not by anything we store, since
+a store that was reset does not remember the token it minted last week. `npm run test:ens-guard`
+drives all four outcomes against the live records, because every safe path returns "proceed"
+and a bug making the blocking branch unreachable would look exactly like a working check.
 
 Rental properties carry a different field set (`com.pprev.rental.escrowAccount`,
 `.reqDeposit` — and no token, deliberately); clients branch on `com.pprev.mode`.

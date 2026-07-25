@@ -151,9 +151,22 @@ needs, resolved live before the buyer flow renders, written programmatically on 
 alpha. Rental properties carry a different field set and clients branch on
 `com.pprev.mode`.
 
-Stated precisely: discovery is live, settlement is not. Transfers read the token from the
-server's own record. Making ENS authoritative for settlement is the honest next step, and
-claiming it already is would be an overstatement.
+Stated precisely, because the distinction matters: ENS is **checked** at settlement, not yet
+**authoritative** for it. `/api/buy` resolves the property's `propertyTokenId` before any share
+moves and refuses the transfer outright — `ENS_CONFIG_MISMATCH`, nothing moved — if the record
+names a token this protocol did not create. So deleting or repointing a record is not
+cosmetic: it can stop a sale. What ENS does not yet do is *supply* the token id; that still
+comes from the server's own record, with ENS as the check on it. Making ENS the source rather
+than the check is the honest next step.
+
+The rule is deliberately asymmetric, and the asymmetry is the interesting part. A record that
+is merely behind does not block: `/api/tokenize` republishes in the background, so a buy
+seconds after a mint legitimately still sees the previous token, and refusing there would kill
+a real sale rather than an attack. Neither does an unreachable resolver — handing a Sepolia
+outage the power to stop a Hedera transfer is worse than the substitution it would prevent.
+Only a record naming a token whose treasury is not ours blocks, because that is the only case
+that is someone else's doing. `npm run test:ens-guard` drives all four outcomes against the
+live records.
 
 ---
 
