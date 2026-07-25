@@ -64,6 +64,50 @@ with it.
 This is not a weakened check: proofs are still verified against World every time, and each
 one is still single-use after the call. It only forgets that this identity was seen before.
 
+### ⚠️ clear-replay alone does NOT get you back in
+
+This is the wall directly behind the one above, and it was found by walking the flow rather
+than by reading the code.
+
+Every Selfie Check mints a **new random session token**, and a property belongs to the
+session that submitted it. So after any second Selfie Check — a reload, an expiry, the
+"Reset session" button, or simply rehearsal #2 — resubmitting the **same property id** is
+refused:
+
+```
+401 SELLER_SESSION_REQUIRED
+This property was submitted by a different session and cannot be replaced from this one.
+```
+
+The screen makes this worse than it is: the green "Session active" badge is telling the
+truth (the new session is fine) while the red card refuses you, and the reflex — verify
+again — mints a third session and changes nothing.
+
+**Between runs, do one of these:**
+
+```bash
+npm run stage      # clears everything and reseeds. The default choice.
+```
+
+or **use a new property id** — PROP-002 → PROP-004 → PROP-005. The field is free text.
+
+Never reuse a property id after a second Selfie Check. Note that a fresh id has no ENS
+record, so the discovery panel falls back to env values and names the previous token; the
+buy still works (the ENS check treats a fallback as *unavailable*, which never blocks), but
+do not narrate that panel as live ENS on a made-up id.
+
+### ⚠️ Do not touch "Reset session"
+
+The small grey button next to the session badge is client-only — it destroys the browser's
+copy and leaves the server's session alive, which is the opposite of useful. After clicking
+it the **entire Seller column is disabled** except the World verify button, and that button
+answers `WORLD_PROOF_REPLAY`. You cannot even switch to a new property id, because that
+field is disabled without a session.
+
+Recovery is admin-only: Buyer column → admin secret → **Clear World replay guard** → verify
+again. If the tab was never reloaded, everything else survives — `/api/tokenize` needs no
+session at all, so an attestation still in memory will still mint.
+
 ---
 
 ## Mid-demo failures, ranked by likelihood
@@ -178,6 +222,25 @@ Verified: a fresh mint moved the record from `0.0.9734945` to `0.0.9736806` with
 
 Nothing to do during the demo. If the ENS write fails (Sepolia down), it is logged and
 `/api/ens-read` degrades to `env-fallback` on its own.
+
+## Presenter rules found by walking the flow
+
+None of these are bugs to fix on demo day. They are the shapes where the honest user and a
+hostile one look identical to the code, so the code refuses both.
+
+| Rule | Why | If it happens anyway |
+|---|---|---|
+| **Never upload against PROP-001 or PROP-003.** | Both are seeded. PROP-001 carries the fee and no-KYC scenes; PROP-003 is `APPROVED` and deliberately untokenized so the rental flow can list it. Neither has an owning session, so the ownership guard does **not** protect them. | `npm run seed` rewrites both. |
+| **Run Identity Check exactly once, on buyer1.** | The `verify-buyer` nullifier is per identity+action; the account id is not part of it. Switching to buyer2 and verifying again is `WORLD_PROOF_REPLAY`, with no explanation on screen. | Harmless — seed already granted KYC to both buyers. Or use the dev grant. |
+| **Type the admin secret in the Verifier column, and do it last.** | It is one module-global value shared with the Buyer column's Seed button. A typo there silently breaks the Verifier's next Approve, in a different column, with nothing linking them. | Re-type it in the Verifier column and click **Load pending** again. |
+| **Click "Load pending" after the seller submits, not before.** | The queue never refreshes itself. Clicking early shows "Queue is empty" forever, which looks like a failure and is not. | Click it again. |
+| **After tokenizing the live property, set the buyer's property field back to PROP-001** before the fee and rejection scenes. | A freshly minted token has its associations, KYC grants and buyer1 float prepared in the background. Too early, the fee scene answers `INSUFFICIENT_TOKEN_BALANCE` — and the rejection scene can answer `KYC_DENIED` for the *wrong reason*, which makes the UI narrate the network-level story over a race. | Wait ~15s and retry, or switch back to PROP-001. |
+| **If a judge says "do it again", change the amount by 1.** | An identical `(property, mode, amount)` within 30 seconds is suppressed and returns the first transaction with "Nothing moved". Correct and honest, but it reads as a failure. | Change the amount, or wait 30 seconds. |
+| **Reject is not gated by the review checklist.** Approve requires all four boxes; Reject does not, and the reason box sits between them. | A mis-click writes REJECTED and publishes it to HCS permanently. | The seller clicks **Submit documents** again (the files are still in state) → verifier clicks **Load pending** → Approve. ~15 seconds. Only works if the seller has not re-verified in between. |
+| **If the ENS panel returns `ENS_CONFIG_INCOMPLETE`, press the button again.** | A *partial* resolution — some records answered, some timed out — is non-empty, so the env fallback does not fire. Failures are never cached, so a retry usually succeeds. | If it keeps failing, skip it: Buy is not gated on ENS and both buyers are already KYC'd. |
+| **Rental: if `settle` or `expire` returns 500, do NOT retry.** | The terminal state is written when the transaction is submitted, not when the receipt arrives — deliberately, so a timeout cannot pay the escrow twice. The money moved. | Check HashScan. The retry will correctly answer `RENTAL_NOT_ENGAGED`. |
+
+---
 
 ## Hard rules
 

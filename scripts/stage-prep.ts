@@ -58,6 +58,30 @@ async function main() {
   if (reset.reset === true) console.log('done')
   else { failed = true; console.log(`FAILED (${reset.code ?? 'unknown'})`) }
 
+  // 1b. Prove the replay store is empty rather than assuming reset emptied it.
+  //
+  // A rehearsal died at step one on a World proof that had already been spent, and the
+  // first question was whether reset clears these at all. It does — `resetStore()` swaps
+  // the whole store object — but the honest answer took a code read, and the actual cause
+  // was that stage had not been run at all. Both problems go away if this step reports a
+  // number: a non-zero count here means reset did NOT clear them, and the count is printed
+  // either way so "did stage run?" is never a question again.
+  step('confirming the World replay store is empty')
+  const replay = await call('/api/dev/clear-replay', 'POST', {})
+  const cleared = typeof replay.cleared === 'number' ? replay.cleared : -1
+  if (cleared === 0) {
+    console.log('empty')
+  } else if (cleared > 0) {
+    failed = true
+    console.log(
+      `⚠️  ${cleared} proof digest(s) survived the reset — they are cleared now, but reset ` +
+        'is supposed to have done this. Investigate before presenting.',
+    )
+  } else {
+    failed = true
+    console.log(`FAILED (${replay.code ?? 'unknown'})`)
+  }
+
   // 2. Rebuild what the scenes need, and rebalance shares back into position.
   step('seeding + rebalancing (first run is slow, this is the warm-up)')
   const started = Date.now()

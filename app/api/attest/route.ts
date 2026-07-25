@@ -45,13 +45,21 @@ export const POST = handler(async (request) => {
 
   // A property belongs to the session that submitted it.
   //
-  // Without this, any Selfie Check produced a token that could overwrite ANY existing
-  // property by re-submitting against its id — including the seeded PROP-003, which is
-  // APPROVED and deliberately untokenized so the rental flow can list it. One stray
-  // submission against that id resets it to PENDING_REVIEW and kills the rental scene
-  // mid-demo, and the TOKENIZED guard above does not catch it because PROP-003 is not
-  // tokenized. Seeded properties have no owner and are left alone; only a property that was
-  // actually submitted by someone is protected.
+  // Without this, any Selfie Check produced a token that could overwrite ANY property
+  // someone else had submitted, by re-submitting against its id.
+  //
+  // Two limits worth stating rather than leaving to be discovered:
+  //
+  //   - Seeded properties (PROP-001, PROP-003) carry no owner, so this guard skips them
+  //     entirely. PROP-003 in particular is APPROVED and deliberately untokenized so the
+  //     rental flow can list it, and the TOKENIZED guard above does not cover it either —
+  //     it has no token. A stray upload against that id still kills the rental scene, and
+  //     the only thing standing in the way is the hard rule in docs/RUNBOOK.md. `npm run
+  //     seed` rewrites both.
+  //   - A session is a browser tab, not a person. Reloading the page or verifying a second
+  //     time mints a new token, so the same human is refused here — the guard cannot tell
+  //     them from a stranger, because nothing durable identifies either. The escape is a new
+  //     property id, and the runbook says so.
   if (existing?.ownerSessionToken && existing.ownerSessionToken !== session.token) {
     throw new ApiError(
       'SELLER_SESSION_REQUIRED',

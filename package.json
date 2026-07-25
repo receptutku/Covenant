@@ -26,7 +26,8 @@
     "smoke": "tsx scripts/smoke.ts",
     "stage": "tsx scripts/stage-prep.ts",
     "test:idem": "tsx scripts/idempotency-test.ts",
-    "test:ens-guard": "tsx scripts/ens-guard-test.ts"
+    "test:ens-guard": "tsx scripts/ens-guard-test.ts",
+    "verifier:keygen": "tsx scripts/verifier-keygen.ts"
   },
   "dependencies": {
     "@ensdomains/ensjs": "^4.3.1",
