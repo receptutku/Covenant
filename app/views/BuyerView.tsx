@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api, ApiRequestError } from "@/lib/apiClient";
-import type { ReadEnsResult, BuyResult, VerifyBuyerResult } from "@/lib/api-types";
+import type { ReadEnsResult, BuyResult, VerifyBuyerResult, SeedResult } from "@/lib/api-types";
 import { ActionCard } from "@/app/components/common/ActionCard";
 import { StatusBadge } from "@/app/components/common/StatusBadge";
 import { ErrorCard } from "@/app/components/common/ErrorCard";
@@ -33,6 +33,7 @@ export function BuyerView() {
   const [ens, setEns] = useState<ReadEnsResult | null>(null);
   const [kyc, setKyc] = useState<VerifyBuyerResult | null>(null);
   const [buyResult, setBuyResult] = useState<BuyResult | null>(null);
+  const [seedResult, setSeedResult] = useState<SeedResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ApiRequestError | Error | null>(null);
 
@@ -41,8 +42,12 @@ export function BuyerView() {
   async function handleSeed() {
     setBusy("seed");
     setError(null);
+    setSeedResult(null);
     try {
-      await api.seed();
+      const res = await api.seed();
+      setSeedResult(res);
+    } catch (e) {
+      setError(e as ApiRequestError);
     } finally {
       setBusy(null);
     }
@@ -120,6 +125,11 @@ export function BuyerView() {
         >
           {busy === "seed" ? "Seeding..." : "Seed PROP-001"}
         </button>
+        {seedResult && (
+          <p className="mt-2 text-xs text-emerald-600">
+            Seeded {seedResult.properties.join(", ")} · token {seedResult.tokenId} · {seedResult.elapsedMs}ms
+          </p>
+        )}
       </ActionCard>
 
       <ActionCard title="0. Pick a property" description="The live flow is PROP-002; golden scenes run on PROP-001.">
