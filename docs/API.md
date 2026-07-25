@@ -21,7 +21,7 @@ CONTRACT-VERSION: 5
 | `seed` / `reset` | no auth | **require `x-demo-admin-secret`** (401 `UNAUTHORIZED`) |
 | `GET /api/property` | undocumented | documented — the endpoint "Refresh status" should call |
 
-`lib/api-types.ts` is updated to match; `lib/mockApi.ts` still reads `CONTRACT-VERSION: 4`.
+`lib/api-types.ts` and `lib/mockApi.ts` are both updated to match.
 
 ---
 
@@ -57,6 +57,7 @@ CONTRACT-VERSION: 5
 | `200` | Success |
 | `400` | Invalid input (Zod validation, missing field) |
 | `401` | Missing or invalid identity/session (`SELLER_SESSION_*`, admin secret) |
+| `500` | Also returned by every admin-gated route when `DEMO_ADMIN_SECRET` is unset on the server — the guard fails closed rather than open, so a fresh checkout with no `.env` gets `INTERNAL_ERROR`, not `UNAUTHORIZED` |
 | `403` | Not authorized (`NOT_LANDLORD`) |
 | `404` | Record not found (`PROPERTY_NOT_FOUND`) |
 | `409` | State conflict (`ALREADY_TOKENIZED`, `LOCK_NOT_EXPIRED`) |
@@ -267,7 +268,10 @@ Verifies the World **Selfie Check** proof server-side and issues an opaque selle
 
 **Errors:** `WORLD_PROOF_INVALID` (422), `WORLD_PROOF_REPLAY` (422), `INVALID_INPUT` (400)
 
-**HCS:** `SELLER_ONBOARDED`
+**HCS:** `SELLER_ONBOARDED` — written under `propertyId: "SELLER"`, not under a real property,
+because onboarding happens before any property exists. It therefore **never appears in
+`GET /api/audit?propertyId=…`**, which filters by that field. Do not build a property timeline
+that expects it as the first event.
 
 ---
 
@@ -322,7 +326,9 @@ bytes disagree with its declared `type` (a `.exe` labelled `application/pdf`), o
 > because the token would keep existing while the store claimed the property was unreviewed —
 > and the seeded `PROP-001` is exactly such a property.
 
-**HCS:** `PROPERTY_SUBMITTED` — payload: `{ documentRoot, documentCount, city }`
+**HCS:** `PROPERTY_SUBMITTED` — payload: `{ documentRoot, documentCount }`. **No `city`.** It is
+free text on a public, permanent topic, so it is deliberately not published; the 39 messages
+below sequence ~190 that still carry it predate that decision and cannot be removed.
 
 ---
 
@@ -655,6 +661,8 @@ supply of a property token), otherwise `INVALID_INPUT`.
   "tokenId": "0.0.222333",
   "amount": 100,
   "netAmount": 100,
+  "feeFloorApplied": false,
+  "effectiveFeeRate": 0,
   "from": "0.0.1001",
   "to": "0.0.654321",
   "mode": "primary",
@@ -926,7 +934,9 @@ repair failed is logged and skipped, not listed.
 > `npm run stage` exits non-zero on this; `npm run preflight` reports the balances.
 
 **Errors:** `INTERNAL_ERROR` (500 — `SEED_TOKEN_ID` is not configured; run `npm run golden`
-once to mint the seed token)
+once to mint the seed token, **or** `DEMO_ADMIN_SECRET` is not set on the server, in which
+case the guard fails closed rather than open), `UNAUTHORIZED` (401 — missing or wrong admin
+secret), `PROPERTY_NOT_FOUND` (404 — in production)
 
 ## `POST /api/reset` — Clears the store (development only)
 
@@ -1083,7 +1093,8 @@ property has no token yet), `KYC_DENIED` (422 — the reserved nokyc account),
   "sellerSessionToken": "...",
   "propertyId": "PROP-003",
   "reqDeposit": 50,
-  "lockWindowSeconds": 600
+  "lockWindowSeconds": 600,
+  "monthlyRent": 15
 }
 ```
 

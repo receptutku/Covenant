@@ -51,6 +51,13 @@ export const POST = handler(async (request) => {
     const deposit = rental.deposit ?? rental.reqDeposit
     const slashed = slashAmount(deposit)
 
+    // The state change rides with the transfer rather than following it: `onSubmitted`
+    // fires the instant the transaction is irreversibly submitted. A receipt timeout after
+    // that leaves the listing EXPIRED, so a retry of this permissionless endpoint is
+    // rejected with RENTAL_NOT_ENGAGED instead of paying the tenant a second time.
+    const markExpired = (settleTxId: string) =>
+      putRental({ ...rental, state: 'EXPIRED', slashed, settleTxId })
+
     const payout = await transferHbar({
       from: escrowAccount(),
       to: tenant,
@@ -60,9 +67,11 @@ export const POST = handler(async (request) => {
       memo: `PPREV escrow expiry ${rental.listingId}`,
       propertyId: rental.propertyId,
       context: 'escrow-release',
+      onSubmitted: markExpired,
+      // Consensus rejected it outright, so nothing moved and the listing is genuinely still
+      // engaged. Only a definitive rejection restores it — never a timeout.
+      onDefinitiveFailure: () => putRental(rental),
     })
-
-    putRental({ ...rental, state: 'EXPIRED', slashed, settleTxId: payout.transactionId })
 
     await submitEventSafe(HCS_EVENTS.RENTAL_EXPIRED, rental.propertyId, {
       listingId: rental.listingId,

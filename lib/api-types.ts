@@ -62,6 +62,9 @@ export class ApiRequestError extends Error {
 }
 
 export interface AuditEvent {
+  /** Hedera consensus time. **This is the field to sort by**, not the envelope timestamp. */
+  consensusTimestamp: string;
+  propertyId: string;
   eventType: string;
   timestamp: string;
   sequenceNumber: number;
@@ -118,7 +121,8 @@ export interface SubmitPropertyResult {
   state: "PENDING_REVIEW";
   documentRoot: string;
   documentCount: number;
-  hcs: { topicId: string; sequenceNumber: number };
+  /** `null` when the audit write failed — the submission still succeeded. Guard before use. */
+  hcs: { topicId: string; sequenceNumber: number } | null;
 }
 
 // ── getProperty (GET /api/property?propertyId=…) ─────────────────────────────
@@ -200,7 +204,7 @@ export interface TokenizeResult {
 export type WorldAction = "onboard-seller" | "verify-buyer" | "verify-tenant";
 export interface RpSignatureInput {
   action: WorldAction;
-  signal: string;
+  signal?: string;
 }
 export interface RpContext {
   sig: string;
@@ -213,7 +217,8 @@ export interface RpSignatureResult {
   rpId: string;
   action: string;
   environment: "staging" | "production";
-  signal: string;
+  /** Echoed back, `null` when the request omitted it. */
+  signal: string | null;
   rpContext: RpContext;
 }
 
@@ -229,7 +234,8 @@ export interface VerifyBuyerResult {
   kycGranted: true;
   tokenId: string;
   buyerAccountId: string;
-  associationTxId: string;
+  /** `null` when the server holds no key for that account, so it could not associate it. */
+  associationTxId: string | null;
   kycTxId: string;
   hashscanUrl: string;
 }
@@ -244,8 +250,8 @@ export interface BuyInput {
 }
 export interface AssessedFee {
   amount: number;
-  tokenId: string;
-  collectorAccountId: string;
+  tokenId: string | null;
+  collectorAccountId: string | null;
 }
 export interface BuyResult {
   transferred: true;
@@ -303,7 +309,17 @@ export interface ReadAuditResult {
   topicId: string;
   source: "mirror-node";
   events: AuditEvent[];
-  links: Record<string, string>;
+  eventCount: number;
+  /** Present once the property is tokenized; `null` before that. */
+  token: {
+    tokenId: string;
+    name?: string;
+    symbol?: string;
+    totalSupply?: string;
+    decimals?: number;
+  } | null;
+  /** `links.token` is `null` until the property has a token. */
+  links: Record<string, string | null>;
 }
 
 // ── seed / reset ─────────────────────────────────────────────────────────
@@ -343,6 +359,11 @@ export interface HealthResult {
   ens: string | null;
   auditTopicId: string | null;
   seededProperties: number;
+  /**
+   * Audit events the on-chain payload guard refused, so the timeline has a hole in it that
+   * nothing else announces. Non-empty is a real problem; `npm run preflight` fails on it.
+   */
+  droppedAuditEvents: string[];
   demoAccounts: {
     buyer1: string | null;
     buyer2: string | null;

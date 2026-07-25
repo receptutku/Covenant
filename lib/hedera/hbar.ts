@@ -96,6 +96,24 @@ export async function transferHbar(
     memo?: string
     propertyId?: string
     context?: HbarTransferContext
+    /**
+     * Fired the moment the transfer is irreversibly submitted — after `execute`, before the
+     * receipt. This is where a caller must persist its terminal state.
+     *
+     * Persisting after `transferHbar` returns is the bug this exists to remove: a receipt
+     * timeout throws on a transfer that may well have succeeded, the listing stays ENGAGED
+     * with a lapsed lock, and `/api/rental/expire` is permissionless — so anyone can fire it
+     * again and the escrow pays deposit + slash a second time. `withLock` does not help; it
+     * serializes concurrent calls, never a sequential retry.
+     */
+    onSubmitted?: (transactionId: string) => void
+    /**
+     * Fired only when consensus DEFINITIVELY rejected the transaction, so nothing moved and
+     * the caller may safely undo what `onSubmitted` wrote. Never fired on a timeout or a
+     * dropped connection: those leave the outcome genuinely unknown, and the safe side of
+     * unknown is to stay terminal and be unstuck by hand rather than risk paying twice.
+     */
+    onDefinitiveFailure?: () => void
   },
   client: Client = getClient(),
 ): Promise<HbarTransferResult> {
@@ -141,7 +159,18 @@ export async function transferHbar(
       hashscanUrl: hashscanUrl('transaction', transactionId),
     })
 
-    await response.getReceipt(client)
+    params.onSubmitted?.(transactionId)
+
+    try {
+      await response.getReceipt(client)
+    } catch (error) {
+      // A StatusError here is consensus speaking: the transaction reached the network and
+      // was rejected, so no HBAR moved and the caller's state change was premature. Anything
+      // else — a timeout, a dropped socket — means we simply do not know, and guessing
+      // "failed" is what pays the escrow out twice.
+      if (error instanceof StatusError) params.onDefinitiveFailure?.()
+      throw error
+    }
 
     return {
       transactionId,

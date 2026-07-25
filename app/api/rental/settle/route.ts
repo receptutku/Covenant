@@ -46,6 +46,11 @@ export const POST = handler(async (request) => {
     const tenant = rental.tenantAccountId ?? tenantAccount().accountId.toString()
     const deposit = rental.deposit ?? rental.reqDeposit
 
+    // See /api/rental/expire: the terminal state is written when the transfer is submitted,
+    // not when the receipt arrives, so a timeout cannot leave the escrow payable twice.
+    const markSettled = (settleTxId: string) =>
+      putRental({ ...rental, state: 'SETTLED', slashed: 0, settleTxId })
+
     const refund = await transferHbar({
       from: escrowAccount(),
       to: tenant,
@@ -53,9 +58,9 @@ export const POST = handler(async (request) => {
       memo: `PPREV escrow release ${rental.listingId}`,
       propertyId: rental.propertyId,
       context: 'escrow-release',
+      onSubmitted: markSettled,
+      onDefinitiveFailure: () => putRental(rental),
     })
-
-    putRental({ ...rental, state: 'SETTLED', slashed: 0, settleTxId: refund.transactionId })
 
     await submitEventSafe(HCS_EVENTS.RENTAL_SETTLED, rental.propertyId, {
       listingId: rental.listingId,

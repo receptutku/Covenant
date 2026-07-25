@@ -93,6 +93,11 @@ export const POST = handler(async (request) => {
     // public rent, so it takes a name that says so.
     requiredMonthlyEarnings,
     verifiedByWorld: verified.verifiedByWorld,
+    // Which World environment actually accepted the proof. Recorded because the boolean
+    // alone does not distinguish a simulator proof from a real-device one, and claiming
+    // "World verified this" without saying which is a claim a judge cannot check. Absent
+    // when nothing verified it.
+    worldEnvironment: verified.environment ?? null,
   })
 
   return jsonResponse({

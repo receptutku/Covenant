@@ -175,9 +175,15 @@ function nextSequence(): number {
 
 function pushEvent(property: PropertyRecord, eventType: string, payload: Record<string, unknown> = {}) {
   const seq = nextSequence();
+  const now = new Date().toISOString();
   property.events.push({
     eventType,
-    timestamp: new Date().toISOString(),
+    timestamp: now,
+    // The real envelope carries both. `consensusTimestamp` is what a timeline must sort by;
+    // omitting it from the mock is how a UI ends up sorting by the wrong field and only
+    // finding out against a live topic, where the two genuinely differ.
+    consensusTimestamp: now,
+    propertyId: property.propertyId,
     sequenceNumber: seq,
     payload,
     explorerUrl: hashscanTopic(MOCK_TOPIC_ID),
@@ -274,13 +280,18 @@ async function submitProperty(input: SubmitPropertyInput): Promise<SubmitPropert
     sizeBytes: Math.floor((f.dataBase64.length * 3) / 4),
   }));
 
-  pushEvent(property, "SELLER_ONBOARDED", {});
+  // No SELLER_ONBOARDED here. The real server publishes it under `propertyId: "SELLER"`,
+  // so it never appears in a property's timeline — a mock that adds it teaches the UI to
+  // expect a first event that will not be there.
   const seq = nextSequence();
   property.events.push({
     eventType: "PROPERTY_SUBMITTED",
     timestamp: property.submittedAt,
+    consensusTimestamp: property.submittedAt,
+    propertyId: property.propertyId,
     sequenceNumber: seq,
-    payload: { documentRoot: property.documentRoot, documentCount: property.documentCount, city: property.city },
+    // No `city`. It is free text on a public permanent topic, and the real server strips it.
+    payload: { documentRoot: property.documentRoot, documentCount: property.documentCount },
     explorerUrl: hashscanTopic(MOCK_TOPIC_ID),
   });
 
@@ -403,7 +414,7 @@ async function getRpSignature(input: RpSignatureInput): Promise<RpSignatureResul
     rpId: "rp_mock0000000000000000",
     action: input.action,
     environment: "staging",
-    signal: input.signal,
+    signal: input.signal ?? null,
     rpContext: {
       sig: `0x${randomHex(32)}`,
       nonce: `0x${randomHex(16)}`,
@@ -454,7 +465,11 @@ async function buy(input: BuyInput): Promise<BuyResult> {
   const isSecondary = input.mode === "secondary";
   const from = isSecondary ? MOCK_BUYER1 : MOCK_OPERATOR;
   const to = isSecondary ? MOCK_BUYER2 : input.buyerAccountId;
-  const fee = isSecondary ? Math.max(1, Math.round(input.amount * (FRACTIONAL_FEE_BPS / 10000))) : 0;
+  // floor, not round — the chain computes max(1, floor(amount * 2%)), and the two diverge
+  // at 75 shares (round gives 2, the chain gives 1), which also flips feeFloorApplied.
+  const fee = isSecondary
+    ? Math.max(1, Math.floor(input.amount * (FRACTIONAL_FEE_BPS / 10000)))
+    : 0;
   const txId = fakeTxId();
 
   pushEvent(property, "TOKEN_TRANSFERRED", { mode: input.mode, amount: input.amount });
@@ -513,7 +528,7 @@ async function readEns(input: ReadEnsInput): Promise<ReadEnsResult> {
     name: `prop-${input.propertyId.split("-")[1] ?? input.propertyId}.pprevlisbon.eth`,
     mode,
     source: "ens",
-    network: "sepolia",
+    network: "testnet",
     resolvedAt: new Date().toISOString(),
     records,
   };
@@ -528,9 +543,23 @@ async function readAudit(propertyId: string): Promise<ReadAuditResult> {
     topicId: MOCK_TOPIC_ID,
     source: "mirror-node",
     events,
+    eventCount: events.length,
+    token: property?.tokenId
+      ? {
+          tokenId: property.tokenId,
+          name: property.displayName,
+          symbol: property.tokenSymbol,
+          totalSupply: "1000",
+          decimals: 0,
+        }
+      : null,
     links: {
       topic: hashscanTopic(MOCK_TOPIC_ID),
-      ...(property?.tokenId ? { token: hashscanToken(property.tokenId) } : {}),
+      // `null`, not absent — the real server always sends the key.
+      token: property?.tokenId ? hashscanToken(property.tokenId) : null,
+      // The "curl it yourself" link. It carries the whole verifiability claim, so a mock
+      // that omits it lets a UI ship without ever showing it.
+      mirrorTopic: `https://testnet.mirrornode.hedera.com/api/v1/topics/${MOCK_TOPIC_ID}/messages`,
     },
   };
 }
@@ -544,6 +573,7 @@ async function health(): Promise<HealthResult> {
     ens: "pprevlisbon.eth",
     auditTopicId: MOCK_TOPIC_ID,
     seededProperties: store.properties.size,
+    droppedAuditEvents: [],
     demoAccounts: {
       buyer1: MOCK_BUYER1,
       buyer2: MOCK_BUYER2,
@@ -796,7 +826,11 @@ async function rentalExpire(input: RentalExpireInput): Promise<RentalExpireResul
   }
 
   rental.state = "EXPIRED";
-  const slashed = Math.max(1, Math.round(rental.reqDeposit * (RENTAL_SLASH_BPS / 10000)));
+  // Floor to whole tinybars, no minimum. The real rule is 10% exactly, so a 5 ℏ deposit
+  // slashes 0.5 — a `Math.max(1, …)` here made the mock disagree with the number
+  // docs/API.md works through and with what HashScan shows.
+  const slashed =
+    Math.floor(rental.reqDeposit * (RENTAL_SLASH_BPS / 10000) * 1e8) / 1e8;
   const txId = fakeTxId();
   const property = store.properties.get(rental.propertyId);
   if (property) {
