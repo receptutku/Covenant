@@ -2,6 +2,7 @@ import { createPublicClient, createWalletClient, http, namehash } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { sepolia } from 'viem/chains'
 import { RECORD_KEYS, RESOLVER_ABI, UNIVERSAL_RESOLVER } from './constants'
+import { withLock } from '../lock'
 
 /**
  * Publishes a freshly minted token id to the property's ENS record.
@@ -65,7 +66,12 @@ export async function publishTokenId(propertyId: string, tokenId: string): Promi
   invalidate?.(name)
 
   try {
-    await writeTokenId(name, tokenId)
+    // Serialized across ALL names, not per name: every ENS write is signed by the same
+    // wallet, so two concurrent publishes would fetch the same nonce and one would be
+    // rejected as a duplicate. Tokenizing two properties in quick succession is enough to
+    // trigger it, and the loser fails silently in the background — leaving one property's
+    // discovery record pointing at a token that no longer exists.
+    await withLock('ens-write', () => writeTokenId(name, tokenId))
   } finally {
     pending().delete(name)
     invalidate?.(name)
