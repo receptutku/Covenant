@@ -15,10 +15,36 @@ import { NextResponse, type NextRequest } from 'next/server'
  * Next 16 note: this file is `proxy.ts` — the convention formerly known as middleware.
  */
 
+/**
+ * Every custom request header any route reads. Keep this list complete.
+ *
+ * A header the server requires but the preflight does not allow is invisible on localhost
+ * (same-origin requests skip the preflight entirely) and fatal through the tunnel: the
+ * browser refuses to send it, so the route answers with whatever it does when the header is
+ * absent. `x-seller-session` shipped missing from this list, which made `GET /api/property`
+ * — and therefore the seller's whole "Refresh status" step — fail only in the demo
+ * configuration.
+ *
+ * `scripts/preflight.ts` cross-checks this against the headers the code actually reads.
+ */
+export const ALLOWED_REQUEST_HEADERS = [
+  'Content-Type',
+  'x-demo-admin-secret',
+  'x-seller-session',
+] as const
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, x-demo-admin-secret',
-  'Access-Control-Max-Age': '86400',
+  'Access-Control-Allow-Headers': ALLOWED_REQUEST_HEADERS.join(', '),
+  // Ten minutes, not a day.
+  //
+  // The browser caches a preflight RESPONSE, not a failure — so an allow-list that was
+  // missing a header is served from cache and keeps blocking the real request long after
+  // the server is fixed. At 86400 that is a full day of "I pulled your fix and it still
+  // doesn't work", and a normal hard reload does not clear the CORS preflight cache.
+  // While the contract is still moving, a stale allow-list should expire inside one
+  // rehearsal.
+  'Access-Control-Max-Age': '600',
 } as const
 
 export function proxy(request: NextRequest) {

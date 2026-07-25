@@ -1,4 +1,5 @@
 import './env'
+import { readFile, readdir } from 'node:fs/promises'
 import { signRequest } from '@worldcoin/idkit-server'
 import { createPublicClient, http } from 'viem'
 import { sepolia } from 'viem/chains'
@@ -113,6 +114,68 @@ async function checkServer() {
     .map(([name]) => name)
   if (missing.length === 0) pass('demo account ids published for the frontend')
   else fail('demo accounts unpublished', `${missing.join(', ')} — the UI cannot resolve them`)
+}
+
+/**
+ * Every custom header a route reads must survive the CORS preflight.
+ *
+ * This is invisible where it is developed and fatal where it is demoed: same-origin
+ * requests skip the preflight entirely, so a header missing from the allow-list works
+ * perfectly on localhost and is silently stripped through the tunnel — the route then
+ * behaves as if the caller never sent it. `x-seller-session` shipped this way and took the
+ * seller's entire "Refresh status" step down in the only configuration that matters.
+ *
+ * The list is discovered from the source rather than hardcoded here, so a header added to a
+ * route in future is checked without anyone remembering to update this file.
+ */
+async function checkCors() {
+  console.log('\n▶ CORS (what the tunnel will actually allow)')
+  const base = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
+
+  const sources = await readdir('app/api', { recursive: true })
+  const used = new Set<string>()
+  for (const entry of sources) {
+    if (!entry.endsWith('.ts')) continue
+    const text = await readFile(`app/api/${entry}`, 'utf8')
+    for (const match of text.matchAll(/headers\.get\(['"](x-[a-z-]+)['"]\)/g)) {
+      used.add(match[1])
+    }
+  }
+  const lib = await readFile('lib/api.ts', 'utf8')
+  for (const match of lib.matchAll(/headers\.get\(['"](x-[a-z-]+)['"]\)/g)) used.add(match[1])
+
+  if (used.size === 0) {
+    warn('no custom headers found', 'the scan pattern may have gone stale')
+    return
+  }
+
+  let allowed: string
+  try {
+    const response = await fetch(`${base}/api/health`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://preflight.example.com',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': [...used].join(', '),
+      },
+      signal: AbortSignal.timeout(5_000),
+    })
+    allowed = (response.headers.get('access-control-allow-headers') ?? '').toLowerCase()
+  } catch {
+    fail('preflight request failed', `${base} did not answer an OPTIONS`)
+    return
+  }
+
+  const blocked = [...used].filter((header) => !allowed.includes(header))
+  if (blocked.length === 0) {
+    pass('every header the routes read is allowed cross-origin', [...used].join(', '))
+  } else {
+    fail(
+      `${blocked.length} header(s) blocked by CORS`,
+      `${blocked.join(', ')} — add them to ALLOWED_REQUEST_HEADERS in proxy.ts. ` +
+        'This only breaks through the tunnel, never on localhost.',
+    )
+  }
 }
 
 async function checkHedera() {
@@ -272,6 +335,7 @@ async function main() {
 
   await checkEnv()
   await checkServer()
+  await checkCors()
   await checkHedera()
   await checkMirrorAndScenePreconditions()
   await checkEns()
