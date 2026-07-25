@@ -31,6 +31,7 @@ export const POST = handler(async (request) => {
     propertyId: property.propertyId,
     landlordAccountId: landlordAccount().accountId.toString(),
     reqDeposit: body.reqDeposit,
+    monthlyRent: body.monthlyRent,
     lockWindowSeconds: body.lockWindowSeconds,
     state: 'LISTED',
     createdAt: new Date().toISOString(),
@@ -41,6 +42,7 @@ export const POST = handler(async (request) => {
   await submitEventSafe(HCS_EVENTS.RENTAL_LISTED, property.propertyId, {
     listingId,
     reqDeposit: body.reqDeposit,
+    monthlyRent: body.monthlyRent,
     lockWindowSeconds: body.lockWindowSeconds,
     escrowAccountId: rental.escrowAccountId,
   })
@@ -50,6 +52,7 @@ export const POST = handler(async (request) => {
     propertyId: property.propertyId,
     state: rental.state,
     reqDeposit: rental.reqDeposit,
+    monthlyRent: rental.monthlyRent,
     lockWindowSeconds: rental.lockWindowSeconds,
     escrowAccountId: rental.escrowAccountId,
   })

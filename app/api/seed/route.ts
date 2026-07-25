@@ -159,39 +159,69 @@ async function rebalanceShares(
   tokenId: string,
   buyer1: ReturnType<typeof getDemoAccount>,
   buyer2: ReturnType<typeof getDemoAccount>,
-): Promise<{ toBuyer1: number; toTreasury: number }> {
+): Promise<{
+  buyer1: { sent: number; reached: number; short: number }
+  treasury: { sent: number; reached: number; short: number }
+  ok: boolean
+}> {
   const operator = getOperator()
-  const result = { toBuyer1: 0, toTreasury: 0 }
 
-  const moveFromBuyer2 = async (to: typeof buyer1.accountId, shortfall: number) => {
-    if (shortfall <= 0) return 0
+  /**
+   * Moves shares from buyer2 and reports whether the TARGET was reached, not merely how
+   * much was sent.
+   *
+   * Reporting the amount sent hid two failures behind a 200. If buyer2 held less than the
+   * shortfall it emptied itself and left the target unmet; if it held exactly the shortfall
+   * the `Math.min` clipped the fee buffer away and the recipient landed one or two short —
+   * the buffer failing at precisely the moment it was needed. Either way seed answered
+   * "rebalanced" and the next secondary buy died mid-demo.
+   */
+  const moveFromBuyer2 = async (
+    to: typeof buyer1.accountId,
+    target: number,
+  ): Promise<{ sent: number; reached: number; short: number }> => {
+    const held = await tokenBalance(tokenId, to)
+    const shortfall = target - held
+    if (shortfall <= 0) return { sent: 0, reached: held, short: 0 }
+
     const available = await tokenBalance(tokenId, buyer2.accountId)
-    // A buyer2 → anyone transfer is itself fee-bearing (neither side is the treasury), so
-    // ask for a little more than the shortfall and let the 2% come out of the surplus.
+    // A buyer2 → anyone transfer is fee-bearing (neither side is the treasury), so ask for
+    // a little more than the shortfall and let the 2% come out of the surplus.
     const amount = Math.min(available, shortfall + 5)
-    if (amount <= 0) return 0
+    if (amount <= 0) return { sent: 0, reached: held, short: shortfall }
+
     try {
       await transferShares({ tokenId, from: buyer2, to, amount })
-      return amount
     } catch (error) {
       console.warn(
         '[seed] Could not recycle shares from buyer2:',
         error instanceof Error ? error.message : error,
       )
-      return 0
+      return { sent: 0, reached: held, short: shortfall }
     }
+
+    // Re-read rather than assume: the inclusive fee means the recipient is credited less
+    // than was sent, and that gap is exactly what used to go unnoticed.
+    const reached = await tokenBalance(tokenId, to)
+    return { sent: amount, reached, short: Math.max(0, target - reached) }
   }
 
   // The fee scene first: it is the one that fails most visibly, mid-narration.
-  const buyer1Held = await tokenBalance(tokenId, buyer1.accountId)
-  result.toBuyer1 = await moveFromBuyer2(buyer1.accountId, SECONDARY_SCENE_SHARES - buyer1Held)
+  const buyer1Result = await moveFromBuyer2(buyer1.accountId, SECONDARY_SCENE_SHARES)
 
   // Then the treasury, so primary sales have inventory. Without this the demo works right
   // up until someone buys, which is the worst place to discover it.
-  const treasuryHeld = await tokenBalance(tokenId, operator.accountId)
-  result.toTreasury = await moveFromBuyer2(operator.accountId, TREASURY_FLOAT_SHARES - treasuryHeld)
+  const treasuryResult = await moveFromBuyer2(operator.accountId, TREASURY_FLOAT_SHARES)
 
-  return result
+  const ok = buyer1Result.short === 0 && treasuryResult.short === 0
+  if (!ok) {
+    console.warn(
+      `[seed] Rebalance incomplete — buyer1 short ${buyer1Result.short}, treasury short ` +
+        `${treasuryResult.short}. buyer2 is the only reservoir and may be exhausted.`,
+    )
+  }
+
+  return { buyer1: buyer1Result, treasury: treasuryResult, ok }
 }
 
 /**

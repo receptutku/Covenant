@@ -153,6 +153,8 @@ export const rentalListSchema = z.object({
   sellerSessionToken: z.string().min(1).optional(),
   propertyId: propertyIdSchema,
   reqDeposit: hbarAmountSchema,
+  /** Advertised monthly rent (HBAR). The tenant income threshold derives from this. */
+  monthlyRent: hbarAmountSchema,
   // The 10s floor exists so the demo can show the expiration scene live; it needs a short window.
   lockWindowSeconds: z.number().int().min(10).max(86_400),
 })
@@ -162,7 +164,6 @@ export const rentalApplySchema = z.object({
   tenantAccountId: accountIdSchema,
   proof: worldProofSchema,
   action: z.literal('verify-tenant').default('verify-tenant'),
-  monthlyRent: z.number().positive().max(10_000),
 })
 
 export const rentalEngageSchema = z.object({

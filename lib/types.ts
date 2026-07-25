@@ -78,6 +78,14 @@ export type Rental = {
   tenantAccountId?: string
   /** Requested deposit (HBAR). */
   reqDeposit: number
+  /**
+   * Monthly rent the landlord advertises, in HBAR.
+   *
+   * The tenant's income threshold is derived from THIS, not from a figure the applicant
+   * supplies. Taking it from the application let an applicant set their own bar, which is
+   * an eligibility check in appearance only.
+   */
+  monthlyRent: number
   /** Deposit actually locked (HBAR). Undefined until ENGAGED. */
   deposit?: number
   lockWindowSeconds: number

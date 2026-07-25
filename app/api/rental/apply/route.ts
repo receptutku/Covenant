@@ -1,7 +1,7 @@
 import { ApiError } from '@/lib/errors'
 import { handler, jsonResponse, parseBody } from '@/lib/api'
 import { submitEventSafe } from '@/lib/hedera/topic'
-import { requireRental, requireState } from '@/lib/rental'
+import { requireRental, requireState, toTinybarPrecision } from '@/lib/rental'
 import { rentalApplySchema } from '@/lib/schemas'
 import { putRental } from '@/lib/store'
 import { HCS_EVENTS } from '@/lib/types'
@@ -52,7 +52,14 @@ export const POST = handler(async (request) => {
   // The protocol shows where that proof plugs in and what it must output; the demo
   // supplies the output. Saying so plainly is worth more than a convincing-looking `true`.
   const INCOME_MULTIPLE = 3
-  const requiredMonthlyEarnings = body.monthlyRent * INCOME_MULTIPLE
+  // Derived from the rent the LANDLORD advertised on the listing, not from a figure the
+  // applicant sends. Taking it from the request let an applicant set their own bar —
+  // `monthlyRent: 0.01` published a threshold of 0.03 and a cheerful `thresholdMet: true`.
+  // An eligibility check an applicant can parameterise is decoration.
+  //
+  // Rounded to whole tinybars because 0.1 * 3 is 0.30000000000000004 in binary floating
+  // point, and that is what would have been written to the chain.
+  const requiredMonthlyEarnings = toTinybarPrecision(rental.monthlyRent * INCOME_MULTIPLE)
   const thresholdRule = `income >= ${INCOME_MULTIPLE}x rent`
   const incomeThresholdMet = true
 

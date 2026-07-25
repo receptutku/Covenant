@@ -27,6 +27,8 @@ const ADMIN_SECRET = process.env.DEMO_ADMIN_SECRET!
 const NO_RESET = process.argv.includes('--no-reset')
 const PROPERTY_ID = NO_RESET ? `PROP-RENT-${Date.now().toString().slice(-6)}` : 'PROP-003'
 const DEPOSIT = 5
+/** Advertised monthly rent. The tenant income threshold derives from this, not the application. */
+const RENT = 2
 const SHORT_LOCK_SECONDS = 12
 
 let failures = 0
@@ -115,7 +117,7 @@ async function listAndEngage(
 ): Promise<{ listingId: string; engage: ApiResult }> {
   const listed = await call('/api/rental/list', {
     method: 'POST',
-    body: { sellerSessionToken, propertyId: PROPERTY_ID, reqDeposit: DEPOSIT, lockWindowSeconds },
+    body: { sellerSessionToken, propertyId: PROPERTY_ID, reqDeposit: DEPOSIT, monthlyRent: RENT, lockWindowSeconds },
   })
   const listingId = listed.body.listingId as string
 
@@ -188,7 +190,7 @@ async function main() {
   console.log('0a. Forged tenant proof against the real apply endpoint')
   const probe = await call('/api/rental/list', {
     method: 'POST',
-    body: { sellerSessionToken, propertyId: PROPERTY_ID, reqDeposit: DEPOSIT, lockWindowSeconds: 600 },
+    body: { sellerSessionToken, propertyId: PROPERTY_ID, reqDeposit: DEPOSIT, monthlyRent: RENT, lockWindowSeconds: 600 },
   })
   const forgedApply = await call('/api/rental/apply', {
     method: 'POST',
@@ -197,7 +199,6 @@ async function main() {
       tenantAccountId: process.env.BUYER1_ID,
       proof: { nullifier_hash: `0xforged-${Date.now()}` },
       action: 'verify-tenant',
-      monthlyRent: 1,
     },
   })
   ok(
@@ -215,6 +216,7 @@ async function main() {
       sellerSessionToken,
       propertyId: 'PROP-001',
       reqDeposit: DEPOSIT,
+      monthlyRent: RENT,
       lockWindowSeconds: 600,
     },
   })

@@ -1,7 +1,7 @@
 import { handler, jsonResponse, parseBody } from '@/lib/api'
 import { ApiError } from '@/lib/errors'
 import { demoAccountFor, getDemoAccount, getOperator } from '@/lib/hedera/client'
-import { associateToken, transferShares } from '@/lib/hedera/token'
+import { FRACTIONAL_FEE_BPS, associateToken, transferShares } from '@/lib/hedera/token'
 import { submitEventSafe } from '@/lib/hedera/topic'
 import { requireProperty } from '@/lib/property'
 import { buySchema } from '@/lib/schemas'
@@ -60,6 +60,15 @@ export const POST = handler(async (request) => {
     })
 
     const feeTotal = result.assessedCustomFees.reduce((sum, fee) => sum + fee.amount, 0)
+    const netAmount = body.amount - feeTotal
+
+    // The fee has a `min 1` floor, and with whole-share units that floor dominates below
+    // 50 shares: 10 sent charges 1 (10%), and 1 sent charges 1 — the recipient receives
+    // NOTHING. Verified on-chain. The demo narrates "a 2% protocol fee", so the response
+    // says outright when the effective rate is not 2%, rather than leaving the presenter to
+    // explain a number that contradicts them.
+    const effectiveFeeRate = body.amount > 0 ? feeTotal / body.amount : 0
+    const feeFloorApplied = feeTotal > 0 && effectiveFeeRate > FRACTIONAL_FEE_BPS / 10_000 + 1e-9
 
     // Only successful transfers are recorded. A rejected transfer throws before this point,
     // which is deliberate: the audit trail should not imply a transfer that never happened.
@@ -73,7 +82,7 @@ export const POST = handler(async (request) => {
     await submitEventSafe(HCS_EVENTS.TOKEN_TRANSFERRED, property.propertyId, {
       tokenId: property.tokenId,
       amount: body.amount,
-      netAmount: body.amount - feeTotal,
+      netAmount,
       from: from.accountId.toString(),
       to,
       mode: body.mode,
@@ -88,7 +97,12 @@ export const POST = handler(async (request) => {
       // What the recipient actually receives. The fee is inclusive, so on a secondary
       // transfer this is 98 of the 100 sent — the number the UI should show next to the
       // balance, since it is the one Mirror will confirm.
-      netAmount: body.amount - feeTotal,
+      netAmount,
+      // True when the `min 1` floor pushed the effective rate above 2% — which happens for
+      // any secondary transfer under 50 shares, and takes the whole amount at 1 share. The
+      // UI should not say "2% protocol fee" when this is set.
+      feeFloorApplied,
+      effectiveFeeRate: Number(effectiveFeeRate.toFixed(4)),
       from: from.accountId.toString(),
       to,
       mode: body.mode,

@@ -148,8 +148,8 @@ export async function submitEventSafe(
     //
     // The request still succeeds, because the chain operation it describes already did and
     // failing it would be worse. But the drop is counted, `/api/health` exposes the count,
-    // and `npm run preflight` fails on it — so the next one is caught before a rehearsal
-    // rather than during one.
+    // and `npm run preflight` fails on it. The record deliberately survives /api/reset — a
+    // bug in our payload does not stop existing because the demo state was cleared.
     if (message.includes('sensitive field')) {
       recordDroppedEvent(`${eventType}: ${message}`)
       console.error(`\n${'!'.repeat(70)}`)

@@ -1,7 +1,7 @@
 import { assertDevelopmentOnly, handler, jsonResponse, parseBody, requireAdminSecret } from '@/lib/api'
 import { ApiError } from '@/lib/errors'
 import { submitEventSafe } from '@/lib/hedera/topic'
-import { requireRental } from '@/lib/rental'
+import { requireRental, toTinybarPrecision } from '@/lib/rental'
 import { putRental } from '@/lib/store'
 import { HCS_EVENTS } from '@/lib/types'
 import { z } from 'zod'
@@ -23,7 +23,7 @@ const schema = z.object({
   tenantAccountId: accountIdSchema,
   // Mirrors the real endpoint so both paths compute and record the same threshold. A dev
   // bypass that emits a DIFFERENT audit payload tests something the demo never runs.
-  monthlyRent: z.number().positive().max(10_000).default(1),
+
 })
 
 export const POST = handler(async (request) => {
@@ -44,8 +44,11 @@ export const POST = handler(async (request) => {
 
   putRental({ ...rental, state: 'APPLIED', tenantAccountId: body.tenantAccountId })
 
+  // Same derivation as the real endpoint: from the LISTING's advertised rent, never from
+  // the request. A bypass that computes a different number tests something the demo never
+  // runs.
   const INCOME_MULTIPLE = 3
-  const requiredMonthlyEarnings = body.monthlyRent * INCOME_MULTIPLE
+  const requiredMonthlyEarnings = toTinybarPrecision(rental.monthlyRent * INCOME_MULTIPLE)
 
   await submitEventSafe(HCS_EVENTS.RENTAL_APPLICATION, rental.propertyId, {
     listingId: rental.listingId,

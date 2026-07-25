@@ -120,20 +120,34 @@ export async function transferHbar(
       await transaction.freezeWith(client).sign(params.from.privateKey)
     ).execute(client)
 
-    await response.getReceipt(client)
-
     const transactionId = response.transactionId.toString()
-    const url = hashscanUrl('transaction', transactionId)
 
+    // Record the id BEFORE waiting for the receipt.
+    //
+    // The HBAR has already moved by the time `execute` returns; the receipt only tells us
+    // what consensus decided. A timeout or a dropped connection while waiting therefore
+    // throws AFTER the money is gone, and every caller updates its state only after this
+    // function returns — so a retry debits the tenant a second deposit, or pays a second
+    // refund out of the escrow, with nothing recording the first. `/api/rental/expire` is
+    // permissionless, so anyone could drive that retry.
+    //
+    // Writing the id first means a failed wait leaves a trace to reconcile against instead
+    // of a silent second transfer.
     recordTransaction({
       transactionId,
       kind: 'HBAR_TRANSFER',
       propertyId: params.propertyId,
       at: new Date().toISOString(),
-      hashscanUrl: url,
+      hashscanUrl: hashscanUrl('transaction', transactionId),
     })
 
-    return { transactionId, hashscanUrl: url, amount: params.amount }
+    await response.getReceipt(client)
+
+    return {
+      transactionId,
+      hashscanUrl: hashscanUrl('transaction', transactionId),
+      amount: params.amount,
+    }
   } catch (error) {
     if (error instanceof StatusError) {
       const message = insufficientFundsMessage(

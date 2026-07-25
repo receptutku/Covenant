@@ -37,6 +37,8 @@ async function call(path: string, method = 'GET', body?: unknown): Promise<Json>
   }
 }
 
+let failed = false
+
 function step(label: string) {
   process.stdout.write(`▶ ${label}… `)
 }
@@ -53,7 +55,8 @@ async function main() {
   // digests — so the same identity can verify again on the next run.
   step('clearing test state')
   const reset = await call('/api/reset', 'POST')
-  console.log(reset.reset === true ? 'done' : `FAILED (${reset.code ?? 'unknown'})`)
+  if (reset.reset === true) console.log('done')
+  else { failed = true; console.log(`FAILED (${reset.code ?? 'unknown'})`) }
 
   // 2. Rebuild what the scenes need, and rebalance shares back into position.
   step('seeding + rebalancing (first run is slow, this is the warm-up)')
@@ -64,15 +67,26 @@ async function main() {
     console.log(`FAILED (${seed.code ?? 'unknown'}) — ${seed.error ?? ''}`)
     process.exit(1)
   }
-  const rebalanced = seed.rebalanced as { toBuyer1: number; toTreasury: number } | undefined
+  const rebalanced = seed.rebalanced as
+    | { buyer1: { reached: number; short: number }; treasury: { reached: number; short: number }; ok: boolean }
+    | undefined
   console.log(
-    `done in ${seconds}s — buyer1 +${rebalanced?.toBuyer1 ?? 0}, treasury +${rebalanced?.toTreasury ?? 0}`,
+    `done in ${seconds}s — buyer1 ${rebalanced?.buyer1.reached ?? '?'}, treasury ${rebalanced?.treasury.reached ?? '?'}` +
+      (rebalanced?.ok === false ? '  ⚠️  SHORT' : ''),
   )
+  if (rebalanced?.ok === false) {
+    failed = true
+    console.log(
+      `   buyer1 short ${rebalanced.buyer1.short}, treasury short ${rebalanced.treasury.short}` +
+        ' — buyer2 is the only reservoir and may be exhausted.',
+    )
+  }
 
   // 3. Warm the paths whose first call is slow, so the demo never pays for a cold start.
   step('warming ENS resolution')
   const ens = await call('/api/ens-read', 'POST', { propertyId: 'PROP-002' })
-  console.log(ens.source ? `done (source: ${ens.source})` : `FAILED (${ens.code ?? 'unknown'})`)
+  if (ens.source) console.log(`done (source: ${ens.source})`)
+  else { failed = true; console.log(`FAILED (${ens.code ?? 'unknown'})`) }
 
   step('warming Mirror timeline')
   const audit = await call('/api/audit?propertyId=PROP-001')
@@ -80,20 +94,25 @@ async function main() {
 
   step('warming World RP signing')
   const rp = await call('/api/rp-signature', 'POST', { action: 'verify-buyer' })
-  console.log(rp.rpContext ? 'done' : `FAILED (${rp.code ?? 'unknown'})`)
+  if (rp.rpContext) console.log('done')
+  else { failed = true; console.log(`FAILED (${rp.code ?? 'unknown'})`) }
 
   // 4. Confirm the stage is actually clean.
   step('checking the verifier queue is empty')
   const pending = await call('/api/verifier/pending')
   const queue = (pending.pending as unknown[] | undefined) ?? []
-  console.log(queue.length === 0 ? 'empty' : `⚠️  ${queue.length} left over`)
+  if (queue.length === 0) console.log('empty')
+  else { failed = true; console.log(`⚠️  ${queue.length} left over`) }
 
   console.log('\n' + '═'.repeat(52))
+  if (failed) {
+    // Printing a success banner over a failed step is how a broken stage reaches the
+    // projector. Every step above marks `failed`, and nothing here overrides it.
+    console.error('❌ Stage preparation did NOT complete. Fix the FAILED steps above.')
+    process.exit(1)
+  }
   console.log('Stage is prepared. Now run `npm run preflight` — it must end with')
   console.log('"All green. Go." before you present.')
-  if (queue.length > 0) {
-    console.log('\n⚠️  The review queue is not empty. A judge will see those cards.')
-  }
 }
 
 main().catch((error) => {

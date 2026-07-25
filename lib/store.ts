@@ -26,14 +26,6 @@ type Store = {
   rentals: Map<string, Rental>
   /** Used to generate RENT-001, RENT-002 ... */
   rentalCounter: number
-  /**
-   * Audit events refused by the on-chain payload guard.
-   *
-   * Kept because the guard's failure mode is silence: it protects the chain from a
-   * sensitive key by dropping the event, which leaves a gap in the trail that nothing
-   * announces. Surfacing a count turns "I happened to notice" into "preflight said so".
-   */
-  droppedEvents: string[]
 }
 
 const GLOBAL_KEY = Symbol.for('pprev.store.v1')
@@ -46,7 +38,6 @@ function createStore(): Store {
     hederaTransactions: [],
     rentals: new Map(),
     rentalCounter: 0,
-    droppedEvents: [],
   }
 }
 
@@ -152,14 +143,31 @@ export function clearReplayDigests(): number {
   return count
 }
 
-/** Records an audit event the payload guard refused. See `submitEventSafe`. */
+/**
+ * Guard-refused audit events, kept OUTSIDE the resettable store.
+ *
+ * They were inside it, which quietly defeated the whole mechanism: `npm run stage` resets
+ * first and runs preflight after, so the counter was cleared before the thing that reads
+ * it ever looked. It could only ever report drops caused by the stage run itself — the
+ * exact silence this was built to remove, reintroduced by the command written to prevent
+ * it.
+ *
+ * A dropped event is a diagnostic about a bug in our code, not demo state. Clearing the
+ * demo has no bearing on whether that bug is still there, so it survives `/api/reset` and
+ * lives until the process does.
+ */
+const DROPPED_KEY = Symbol.for('pprev.dropped.v1')
+type GlobalWithDropped = typeof globalThis & { [DROPPED_KEY]?: string[] }
+
 export function recordDroppedEvent(reason: string): void {
-  getStore().droppedEvents.push(reason)
+  const g = globalThis as GlobalWithDropped
+  if (!g[DROPPED_KEY]) g[DROPPED_KEY] = []
+  g[DROPPED_KEY].push(reason)
 }
 
 /** Guard-refused audit events since the process started. Read by /api/health. */
 export function listDroppedEvents(): string[] {
-  return [...getStore().droppedEvents]
+  return [...((globalThis as GlobalWithDropped)[DROPPED_KEY] ?? [])]
 }
 
 export function claimReplayDigest(digest: string): boolean {
