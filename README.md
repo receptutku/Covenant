@@ -15,9 +15,6 @@ codename and appears in the signed domain separators (`PPREV_DOC_V1`,
 `PPREV_OWNERSHIP_V1`) and in on-chain artifacts already minted on testnet; those strings are
 part of what has been signed and cannot be rewritten after the fact.
 
-> 🚧 Hackathon in progress. This README is split into two halves — to avoid conflicts, each of
-> us writes only in our own half.
-
 ---
 
 <!-- ═══════════ TOP HALF — AKIF ═══════════ -->
@@ -404,9 +401,3 @@ To keep parallel development conflict-free:
 - **Recep:** `app/api/**`, `lib/hedera/**`, `lib/world/**`, `lib/verifier/**`, `lib/crypto/**`, `lib/store.ts`, `lib/ens/**`, `scripts/**`
 - **Akif:** `app/components/**`, `app/views/**`, `app/globals.css`, `lib/mockApi.ts`, `lib/realApi.ts`
 - **Shared (announce before touching):** `app/page.tsx`, `docs/API.md`, `README.md`, `package*.json`, `.env.example`
-
-## No Solidity
-
-Every on-chain operation runs through the native Hedera SDK — HTS (tokens), HCS (audit),
-Mirror Node (public verification). The repository contains no `.sol` files and no EVM deploy
-step.
