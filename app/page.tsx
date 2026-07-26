@@ -197,7 +197,7 @@ export default function Home() {
         looking at the verifier tab. Below `lg` only the active tab is visible;
         from `lg` up all three sit side by side.
       */}
-      <main className="flex-1 p-4 sm:p-6 lg:grid lg:grid-cols-3 lg:gap-5 lg:p-6">
+      <main className="flex-1 p-4 sm:p-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-5 lg:p-6">
         <div
           className={`${activeTab === "seller" ? "block" : "hidden"} lg:block glass-panel rounded-lg p-4 sm:p-5`}
         >
@@ -221,13 +221,22 @@ export default function Home() {
         a public source rather than from anything the three columns own.
       */}
       <section className="p-4 pt-0 sm:p-6 sm:pt-0">
-        <div className="flex flex-col gap-5">
-          <div className="glass-panel rounded-lg p-4 sm:p-5">
-            <AuditTimeline />
+        <div className="evidence-hero">
+          <h2 className="font-display text-[26px] font-semibold leading-[1.05] tracking-[-0.01em] sm:text-[30px]">
+            Public <span className="seller-hero-accent">verification</span>
+          </h2>
+          <p className="mt-2 max-w-[60ch] text-[13px] leading-relaxed text-[var(--muted)]">
+            Read directly from Hedera&apos;s Mirror Node — not from anything this application stores.
+            Anyone can reach the same figures without going through this server.
+          </p>
+          <div className="seller-live-badge" aria-hidden="true">
+            <span className="seller-live-dot" />
+            Live · Hedera Mirror Node
           </div>
-          <div className="glass-panel rounded-lg p-4 sm:p-5">
-            <CapTable />
-          </div>
+        </div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-2 lg:items-start">
+          <AuditTimeline />
+          <CapTable />
         </div>
       </section>
     </div>

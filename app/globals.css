@@ -187,31 +187,92 @@ body {
     font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L", Georgia, serif;
   }
 
+  /*
+   * Round 2: the fine grid + single diagonal line read as blank graph paper
+   * once a short column (Verifier idle, no stretch after lg:items-start)
+   * exposes a lot of it at once. Replaced with a softer, much fainter grid
+   * (texture, not a pattern you consciously notice) and moved the actual
+   * "life" into ::after as a handful of large, slow-drifting colour fields —
+   * azulejo blue, ochre, and a hint of success green — so any empty gap reads
+   * as part of a designed atmosphere rather than bare wallpaper.
+   */
   .app-shell::before {
     content: "";
     position: fixed;
-    inset: 0;
+    inset: -10%;
     z-index: -2;
     pointer-events: none;
     background-image:
       linear-gradient(to right, var(--border) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--border) 1px, transparent 1px),
-      linear-gradient(135deg, transparent 0 44%, var(--azulejo-soft) 44% 45%, transparent 45% 100%);
-    background-size: 88px 88px, 88px 88px, 176px 176px;
-    mask-image: linear-gradient(180deg, black 0%, rgba(0, 0, 0, 0.72) 42%, transparent 100%);
-    opacity: 0.72;
+      linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+    background-size: 96px 96px, 96px 96px;
+    mask-image: radial-gradient(circle at 50% 30%, black 0%, rgba(0, 0, 0, 0.5) 55%, transparent 90%);
+    opacity: 0.22;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .app-shell::before {
+      animation: app-shell-drift 50s linear infinite;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .app-shell::before {
+      animation: none;
+    }
+  }
+  @keyframes app-shell-drift {
+    0% {
+      background-position: 0 0, 0 0;
+    }
+    100% {
+      background-position: 96px 96px, 96px 96px;
+    }
   }
 
   .app-shell::after {
     content: "";
     position: fixed;
-    inset: 0;
+    inset: -10%;
     z-index: -1;
     pointer-events: none;
-    backdrop-filter: blur(0.2px);
     background:
-      linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent),
-      radial-gradient(circle at 50% -10%, rgba(255, 255, 255, 0.42), transparent 36rem);
+      radial-gradient(circle at 12% 8%, var(--azulejo-soft), transparent 46rem),
+      radial-gradient(circle at 90% 4%, rgba(185, 154, 92, 0.16), transparent 42rem),
+      radial-gradient(circle at 8% 62%, rgba(59, 110, 165, 0.1), transparent 46rem),
+      radial-gradient(circle at 94% 68%, rgba(185, 154, 92, 0.12), transparent 44rem),
+      radial-gradient(circle at 45% 96%, rgba(31, 111, 82, 0.06), transparent 46rem),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.4), transparent 30rem);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .app-shell::after {
+      animation: app-shell-glow-drift 30s ease-in-out infinite alternate;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .app-shell::after {
+      animation: none;
+    }
+  }
+  @keyframes app-shell-glow-drift {
+    0% {
+      background-position:
+        0% 0%,
+        100% 0%,
+        0% 60%,
+        100% 65%,
+        45% 100%,
+        0 0;
+    }
+    100% {
+      background-position:
+        6% 5%,
+        94% 6%,
+        4% 66%,
+        96% 72%,
+        50% 92%,
+        0 0;
+    }
   }
 
   .architectural-bg {
@@ -337,6 +398,379 @@ body {
     .step-active::before {
       animation: none;
       opacity: 0.4;
+    }
+  }
+
+  /*
+   * SellerView-only presentation layer (redesign round 1). Scoped under
+   * .seller-view so nothing here touches BuyerView/VerifierView/AuditTimeline/
+   * CapTable, which share .glass-panel, .btn, .field etc. No new state, no JS
+   * animation — CSS only, and the pulse reuses the existing ppr-pulse-ring
+   * keyframes already defined above for .step-active.
+   */
+  .seller-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1.5rem;
+    padding: 1.75rem 2rem 2.1rem;
+    background: linear-gradient(180deg, var(--glass-strong), var(--glass));
+    border: 1px solid var(--border);
+    box-shadow: 0 28px 90px rgba(10, 12, 14, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  }
+
+  .seller-hero::before {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 20% -10%, var(--azulejo-soft), transparent 55%),
+      radial-gradient(circle at 82% 120%, rgba(185, 154, 92, 0.16), transparent 55%),
+      repeating-linear-gradient(135deg, transparent 0 22px, var(--azulejo-soft) 22px 23px, transparent 23px 44px);
+    background-size: 140% 140%, 140% 140%, auto;
+    opacity: 0.85;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .seller-hero::before {
+      animation: seller-hero-drift 18s ease-in-out infinite alternate;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .seller-hero::before {
+      animation: none;
+    }
+  }
+  @keyframes seller-hero-drift {
+    0% {
+      background-position: 0% 0%, 100% 100%, 0 0;
+    }
+    100% {
+      background-position: 12% 8%, 88% 92%, 0 0;
+    }
+  }
+
+  .seller-hero-accent {
+    color: var(--azulejo);
+  }
+
+  .seller-live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.85rem;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--azulejo);
+  }
+
+  .seller-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--azulejo);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .seller-live-dot {
+      animation: seller-live-pulse 2.2s ease-in-out infinite;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .seller-live-dot {
+      animation: none;
+    }
+  }
+  @keyframes seller-live-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 var(--azulejo-soft);
+    }
+    50% {
+      box-shadow: 0 0 0 5px var(--azulejo-soft);
+    }
+  }
+
+  .seller-flow {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    margin-top: 1.75rem;
+    padding-top: 0.25rem;
+    pointer-events: none;
+  }
+
+  .seller-flow-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .seller-flow-dot {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.35rem;
+    height: 2.35rem;
+  }
+
+  .seller-flow-dot-inner {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--azulejo);
+    opacity: 0.55;
+    transition: all 0.2s ease;
+  }
+
+  .seller-flow-node.is-done .seller-flow-dot-inner {
+    border-color: var(--azulejo);
+    background: var(--azulejo-soft);
+    color: var(--azulejo);
+    opacity: 1;
+  }
+
+  .seller-flow-node.is-active .seller-flow-dot-inner {
+    border-color: var(--azulejo);
+    background: var(--accent);
+    color: var(--accent-foreground);
+    opacity: 1;
+    box-shadow: 0 0 0 5px var(--ring), 0 8px 20px rgba(10, 12, 14, 0.25);
+  }
+
+  .seller-flow-glow {
+    position: absolute;
+    inset: -0.85rem;
+    border-radius: 999px;
+    background: radial-gradient(circle, var(--azulejo-soft), transparent 70%);
+    filter: blur(2px);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .seller-flow-glow {
+      animation: ppr-pulse-ring 2.4s ease-in-out infinite;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .seller-flow-glow {
+      animation: none;
+    }
+  }
+
+  .seller-flow-label {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--faint);
+    white-space: nowrap;
+  }
+
+  .seller-flow-node.is-active .seller-flow-label,
+  .seller-flow-node.is-done .seller-flow-label {
+    color: var(--foreground);
+  }
+
+  .seller-flow-line {
+    flex: 1 1 auto;
+    height: 2px;
+    min-width: 0.75rem;
+    margin: 1.15rem 0.4rem 0 0.4rem;
+    background: linear-gradient(90deg, var(--border-strong), var(--border-strong));
+    border-radius: 999px;
+  }
+
+  .seller-flow-line.is-done {
+    background: linear-gradient(90deg, var(--azulejo), var(--azulejo-soft));
+    opacity: 0.75;
+  }
+
+  .seller-workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+
+  .seller-workspace .glass-panel {
+    transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .seller-workspace .glass-panel:not(.step-active) {
+    opacity: 0.88;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .seller-workspace .glass-panel:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 22px 54px rgba(10, 12, 14, 0.14);
+    }
+  }
+
+  .seller-workspace .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 10px 26px rgba(10, 12, 14, 0.14), 0 0 0 4px var(--ring);
+  }
+
+  .seller-upload-zone {
+    border-radius: 0.85rem;
+    border: 1px dashed var(--border-strong);
+    background: var(--surface-sunken);
+    padding: 0.85rem 1rem;
+    transition: border-color 0.15s ease;
+  }
+
+  .seller-upload-zone:focus-within {
+    border-color: var(--azulejo);
+  }
+
+  /*
+   * The native <input type="file"> button label ("Choose File" / "Dosya Seç" /
+   * etc.) is rendered by the browser from the OS/browser locale and cannot be
+   * overridden via CSS content or an attribute — only its box/spacing can be
+   * styled. So the input stays in the DOM, fully functional and reachable
+   * (visually hidden the same way sr-only utilities do, not display:none),
+   * wrapped in a <label> so clicking our English "Choose files" text opens the
+   * native file dialog exactly as clicking the input would.
+   */
+  .seller-file-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+  }
+
+  .seller-file-label:has(input:disabled) {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .seller-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /*
+   * Per-step wrapper (round 2): purely decorative accents driven by the same
+   * `step` value already used for StepIndicator/seller-flow — no new state.
+   * Guides the eye to the active card and marks finished ones, instead of
+   * five equally-loud panels.
+   */
+  .seller-step {
+    position: relative;
+  }
+
+  .seller-step .glass-panel {
+    position: relative;
+  }
+
+  .seller-step.is-active .glass-panel {
+    border-left: 3px solid var(--azulejo);
+  }
+
+  .seller-step.is-active .glass-panel::after {
+    content: "In progress";
+    position: absolute;
+    top: -0.6rem;
+    left: 1.1rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-foreground);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    box-shadow: 0 6px 16px rgba(10, 12, 14, 0.18);
+  }
+
+  .seller-step.is-complete .glass-panel {
+    border-left: 3px solid var(--success);
+  }
+
+  .seller-step.is-complete .glass-panel::after {
+    content: "✓";
+    position: absolute;
+    top: -0.55rem;
+    right: -0.55rem;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 999px;
+    background: var(--success);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 16px rgba(31, 111, 82, 0.32);
+  }
+
+  .seller-step.is-upcoming .glass-panel {
+    border-left: 3px solid transparent;
+  }
+
+  /* Buyer-only: sets the dev-tools card apart from the guided step flow below it. */
+  .buyer-helper-card .glass-panel {
+    border-style: dashed;
+    border-color: var(--border-strong);
+    background: var(--surface-sunken);
+  }
+
+  /*
+   * Section header above the full-width Audit/CapTable pair, same visual
+   * language as .seller-hero (glass, azulejo glow) but a shorter, section-level
+   * treatment rather than a per-column hero.
+   */
+  .evidence-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1.25rem;
+    padding: 1.25rem 1.5rem 1.4rem;
+    background: linear-gradient(180deg, var(--glass-strong), var(--glass));
+    border: 1px solid var(--border);
+    box-shadow: 0 22px 70px rgba(10, 12, 14, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  }
+
+  .evidence-hero::before {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 85% -10%, var(--azulejo-soft), transparent 55%),
+      radial-gradient(circle at 5% 120%, rgba(185, 154, 92, 0.14), transparent 55%);
+    opacity: 0.85;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .evidence-hero::before {
+      animation: seller-hero-drift 20s ease-in-out infinite alternate;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .evidence-hero::before {
+      animation: none;
     }
   }
 }

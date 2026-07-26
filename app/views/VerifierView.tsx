@@ -23,6 +23,20 @@ const EMPTY_CHECKS: ReviewChecks = {
   sufficient: false,
 };
 
+// Purely decorative two-stage flow for the hero — mirrors the existing
+// `unlocked` boolean, no new state.
+const VERIFIER_FLOW = ["Sign in", "Review queue"];
+const VERIFIER_FLOW_ICONS = [
+  <svg key="lock" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <rect x="3.25" y="7" width="9.5" height="6.25" rx="1.5" />
+    <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+  </svg>,
+  <svg key="list" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <path d="M5.6 4.6h6.8M5.6 8h6.8M5.6 11.4h6.8" />
+    <path d="M3.4 4.6h.01M3.4 8h.01M3.4 11.4h.01" strokeLinecap="round" strokeWidth="2" />
+  </svg>,
+];
+
 export function VerifierView({ onApproved }: { onApproved: (propertyId: string, attestation: Attestation) => void }) {
   const [adminSecret, setAdminSecret] = useState("");
   const [unlocked, setUnlocked] = useState(false);
@@ -108,10 +122,47 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
     }
   }
 
-  return (
-    <div className="flex flex-col gap-5">
-      <h2 className="border-b border-[var(--border)] pb-4 text-[22px] font-semibold tracking-[-0.03em]">Verifier <span className="font-normal text-[var(--faint)]">· human review</span></h2>
+  const verifierStep = unlocked ? 1 : 0;
 
+  return (
+    <div className="verifier-view flex flex-col gap-5">
+      <div className="seller-hero">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="font-display text-[34px] font-semibold leading-[1.02] tracking-[-0.02em]">
+              Verifier <span className="seller-hero-accent">review</span>
+            </h2>
+            <p className="mt-2 max-w-[46ch] text-[13px] leading-relaxed text-[var(--muted)]">
+              A human reviewer checks each submission before a signed attestation makes tokenization
+              possible.
+            </p>
+            <div className="seller-live-badge" aria-hidden="true">
+              <span className="seller-live-dot" />
+              Protocol live · Hedera testnet
+            </div>
+          </div>
+        </div>
+
+        <div className="seller-flow" aria-hidden="true">
+          {VERIFIER_FLOW.map((label, i) => (
+            <div key={label} className="contents">
+              <div className={`seller-flow-node ${i < verifierStep ? "is-done" : i === verifierStep ? "is-active" : ""}`}>
+                <span className="seller-flow-dot">
+                  {i === verifierStep && <span className="seller-flow-glow" />}
+                  <span className="seller-flow-dot-inner">{i < verifierStep ? "✓" : VERIFIER_FLOW_ICONS[i]}</span>
+                </span>
+                <span className="seller-flow-label">{label}</span>
+              </div>
+              {i < VERIFIER_FLOW.length - 1 && (
+                <span className={`seller-flow-line ${i < verifierStep ? "is-done" : ""}`} />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="seller-workspace">
+      <div className={`seller-step ${unlocked ? "is-complete" : "is-active"}`}>
       <ActionCard title="Sign in" description="Use the admin secret to see pending properties." active={!unlocked}>
         <div className="flex gap-2">
           <input
@@ -131,13 +182,15 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
         </div>
         <PrivacyNote>The secret lives only in this session&apos;s memory — never written to code, env, or localStorage.</PrivacyNote>
       </ActionCard>
+      </div>
 
       {unlocked && pending.length === 0 && (
         <ActionCard title="Queue is empty" description="No property is currently awaiting review." />
       )}
 
       {pending.map((item) => (
-        <ActionCard key={item.propertyId} title={`${item.propertyId} — ${item.displayName}`} description={item.city} active>
+        <div key={item.propertyId} className="seller-step is-active">
+        <ActionCard title={`${item.propertyId} — ${item.displayName}`} description={item.city} active>
           <ul className="mb-3 rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)] p-3 text-xs leading-relaxed text-[var(--muted)]">
             {item.files.map((f) => (
               <li key={f.name}>
@@ -196,9 +249,11 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
             </button>
           </div>
         </ActionCard>
+        </div>
       ))}
 
       {lastAttestation && (
+        <div className="seller-step is-complete">
         <ActionCard
           title="Last issued attestation"
           description={`${lastAttestation.propertyId} · expires at ${lastAttestation.expiresAt.slice(11, 19)}`}
@@ -231,9 +286,11 @@ export function VerifierView({ onApproved }: { onApproved: (propertyId: string, 
             )}
           </div>
         </ActionCard>
+        </div>
       )}
 
       {error && <ErrorCard error={error} />}
+      </div>
     </div>
   );
 }

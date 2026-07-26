@@ -92,10 +92,12 @@ export function AuditTimeline() {
     : [];
 
   return (
-    <ActionCard
-      title="5. Evidence — public audit trail"
-      description="Read back from Hedera Mirror Node. Nothing here comes from this application's own store."
-    >
+    <div className="audit-view flex flex-col gap-3">
+      <div className="seller-workspace">
+      <ActionCard
+        title="5. Evidence — public audit trail"
+        description="Read back from Hedera Mirror Node. Nothing here comes from this application's own store."
+      >
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={propertyId}
@@ -167,6 +169,8 @@ export function AuditTimeline() {
       )}
 
       {error && <ErrorCard error={error} />}
-    </ActionCard>
+      </ActionCard>
+      </div>
+    </div>
   );
 }

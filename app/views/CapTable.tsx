@@ -105,10 +105,12 @@ export function CapTable() {
   }
 
   return (
-    <ActionCard
-      title="6. Cap table — who holds the shares"
-      description="Fetched from Hedera Mirror Node by the browser. None of these numbers pass through our own API."
-    >
+    <div className="captable-view flex flex-col gap-3">
+      <div className="seller-workspace">
+      <ActionCard
+        title="6. Cap table — who holds the shares"
+        description="Fetched from Hedera Mirror Node by the browser. None of these numbers pass through our own API."
+      >
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs text-[var(--muted)]">
           Property
@@ -233,6 +235,8 @@ export function CapTable() {
       )}
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-    </ActionCard>
+      </ActionCard>
+      </div>
+    </div>
   );
 }

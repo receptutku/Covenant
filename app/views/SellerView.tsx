@@ -14,6 +14,43 @@ import { EvidenceLink } from "@/app/components/common/EvidenceLink";
 
 const STEPS = ["Selfie", "Upload", "Review", "Tokenize", "ENS"];
 
+// Purely decorative labels for the hero flow illustration below — same five
+// stages as STEPS/step, worded for a first-glance reader rather than a column
+// header. No new state: driven by the `step` value the component already computes.
+const FLOW_LABELS = ["Identity", "Evidence", "Review", "Tokenize", "ENS"];
+
+// One small decorative glyph per stage, purely presentational (aria-hidden via
+// the parent). Swapped in for the plain digit so the hero row reads at a glance
+// instead of as five identical circles.
+const FLOW_ICONS = [
+  // Identity — a face/scan mark
+  <svg key="i" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <circle cx="8" cy="6.4" r="2.3" />
+    <path d="M3.6 13c.7-2.3 2.4-3.4 4.4-3.4s3.7 1.1 4.4 3.4" />
+  </svg>,
+  // Evidence — a document
+  <svg key="e" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <path d="M4.5 2h5L13 4.5V14a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5V2.5A.5.5 0 0 1 4.5 2Z" />
+    <path d="M9.3 2v2.6H12" />
+    <path d="M5.6 8h4.8M5.6 10.4h4.8" />
+  </svg>,
+  // Review — a magnifier
+  <svg key="r" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <circle cx="7" cy="7" r="4" />
+    <path d="M10.1 10.1 13.5 13.5" />
+  </svg>,
+  // Tokenize — a coin
+  <svg key="t" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <circle cx="8" cy="8" r="5.3" />
+    <path d="M8 5.4v5.2M6.3 6.4c0-.8.8-1.4 1.7-1.4s1.7.5 1.7 1.2c0 1.6-3.4.9-3.4 2.5 0 .7.8 1.2 1.7 1.2s1.7-.5 1.7-1.3" />
+  </svg>,
+  // ENS — a globe
+  <svg key="n" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <circle cx="8" cy="8" r="5.3" />
+    <path d="M2.9 8h10.2M8 2.7c1.5 1.4 2.3 3.3 2.3 5.3S9.5 12.9 8 14.3c-1.5-1.4-2.3-3.3-2.3-5.3S6.5 4.1 8 2.7Z" />
+  </svg>,
+];
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -192,12 +229,45 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-end justify-between gap-3 border-b border-[var(--border)] pb-4">
-        <h2 className="text-[22px] font-semibold tracking-[-0.03em]">Seller</h2>
-        <StepIndicator steps={STEPS} activeIndex={step} />
+    <div className="seller-view flex flex-col gap-5">
+      <div className="seller-hero">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="font-display text-[34px] font-semibold leading-[1.02] tracking-[-0.02em]">
+              Seller <span className="seller-hero-accent">protocol</span>
+            </h2>
+            <p className="mt-2 max-w-[46ch] text-[13px] leading-relaxed text-[var(--muted)]">
+              Verify identity, submit property evidence, and tokenize — only once a human
+              reviewer has signed off.
+            </p>
+            <div className="seller-live-badge" aria-hidden="true">
+              <span className="seller-live-dot" />
+              Protocol live · Hedera testnet
+            </div>
+          </div>
+          <StepIndicator steps={STEPS} activeIndex={step} />
+        </div>
+
+        <div className="seller-flow" aria-hidden="true">
+          {FLOW_LABELS.map((label, i) => (
+            <div key={label} className="contents">
+              <div className={`seller-flow-node ${i < step ? "is-done" : i === step ? "is-active" : ""}`}>
+                <span className="seller-flow-dot">
+                  {i === step && <span className="seller-flow-glow" />}
+                  <span className="seller-flow-dot-inner">{i < step ? "✓" : FLOW_ICONS[i]}</span>
+                </span>
+                <span className="seller-flow-label">{label}</span>
+              </div>
+              {i < FLOW_LABELS.length - 1 && (
+                <span className={`seller-flow-line ${i < step ? "is-done" : ""}`} />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
+      <div className="seller-workspace">
+      <div className={`seller-step ${step > 0 ? "is-complete" : "is-active"}`}>
       <ActionCard title="1. Selfie Check (World ID)" description="Proof of a live human, without a document upload — the seller gate." active={step === 0}>
         {!session ? (
           <div className="flex flex-col gap-2">
@@ -254,7 +324,9 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
           real demo.
         </PrivacyNote>
       </ActionCard>
+      </div>
 
+      <div className={`seller-step ${step > 1 ? "is-complete" : step === 1 ? "is-active" : "is-upcoming"}`}>
       <ActionCard
         title="2. Submit Property Documents"
         description="Up to 3 files, PDF/PNG/JPEG, 5MB each."
@@ -262,7 +334,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
         active={step === 1}
       >
         <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <input
               className="field"
               value={propertyId}
@@ -299,14 +371,23 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
               disabled={!session}
             />
           </div>
-          <input
-            type="file"
-            multiple
-            accept="application/pdf,image/png,image/jpeg"
-            disabled={!session}
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 3))}
-            className="text-sm text-[var(--muted)] file:mr-3 file:rounded-lg file:border file:border-[var(--border-strong)] file:bg-[var(--surface-sunken)] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--foreground)]"
-          />
+          <div className="seller-upload-zone">
+            <label className="seller-file-label">
+              <span className="btn btn-secondary btn-sm">Choose files</span>
+              <span className="text-xs text-[var(--muted)]">
+                {files.length > 0 ? `${files.length} file${files.length > 1 ? "s" : ""} selected` : "No file chosen"}
+              </span>
+              <input
+                type="file"
+                multiple
+                accept="application/pdf,image/png,image/jpeg"
+                disabled={!session}
+                onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 3))}
+                className="seller-file-input"
+              />
+            </label>
+            <p className="mt-2 text-[11px] text-[var(--faint)]">PDF, PNG or JPEG · up to 3 files · 5MB each</p>
+          </div>
           {files.length > 0 && (
             <ul className="text-xs text-[var(--muted)]">
               {files.map((f) => (
@@ -326,8 +407,10 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
         </div>
         <PrivacyNote>Document bytes and salts stay server-side only; the response carries just the Merkle root.</PrivacyNote>
       </ActionCard>
+      </div>
 
       {documentRoot && (
+        <div className={`seller-step ${step > 2 ? "is-complete" : step === 2 ? "is-active" : "is-upcoming"}`}>
         <ActionCard title="3. Review Status" description={`Document root: ${documentRoot.slice(0, 18)}…`} active={step === 2}>
           <div className="flex items-center gap-2">
             {propertyState === "PENDING_REVIEW" && <StatusBadge status="pending">Awaiting review</StatusBadge>}
@@ -348,9 +431,11 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
             <p className="mt-2 text-sm text-red-600">Reason: {rejectReason}</p>
           )}
         </ActionCard>
+        </div>
       )}
 
       {propertyState === "APPROVED" && (
+        <div className={`seller-step ${step > 3 ? "is-complete" : step === 3 ? "is-active" : "is-upcoming"}`}>
         <ActionCard title="4. Tokenize" description="Only runs for a valid, signed APPROVED record." active={step === 3}>
           {attestationOnServer && !attestations[propertyId] && (
             <p className="mb-2 text-xs text-amber-600">
@@ -367,13 +452,16 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
             {busy === "tokenize" ? "Tokenizing..." : "Tokenize (HTS)"}
           </button>
         </ActionCard>
+        </div>
       )}
 
       {tokenizeResult && (
+        <div className="seller-step is-complete">
         <ActionCard title="5. Token Created" description={`Token ID: ${tokenizeResult.tokenId}`}>
           <EvidenceLink href={tokenizeResult.hashscanUrl} label="View on HashScan" />
           <p className="mt-2 text-xs text-[var(--muted)]">Next: read the live ENS config from the Buyer column.</p>
         </ActionCard>
+        </div>
       )}
 
       {error && (
@@ -388,6 +476,7 @@ export function SellerView({ attestations }: { attestations: Record<string, Atte
           }
         />
       )}
+      </div>
     </div>
   );
 }

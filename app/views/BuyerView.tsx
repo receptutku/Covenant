@@ -14,6 +14,39 @@ import { StepIndicator } from "@/app/components/common/StepIndicator";
 
 const STEPS = ["ENS", "Association", "Identity/KYC", "Buy", "Evidence"];
 
+// Purely decorative — mirrors STEPS/step for the hero flow illustration. No new
+// state, same values the StepIndicator already consumes.
+const FLOW_LABELS = ["ENS", "Association", "Identity", "Buy", "Evidence"];
+
+const FLOW_ICONS = [
+  // ENS — a globe
+  <svg key="ens" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <circle cx="8" cy="8" r="5.3" />
+    <path d="M2.9 8h10.2M8 2.7c1.5 1.4 2.3 3.3 2.3 5.3S9.5 12.9 8 14.3c-1.5-1.4-2.3-3.3-2.3-5.3S6.5 4.1 8 2.7Z" />
+  </svg>,
+  // Association — a link
+  <svg key="assoc" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <path d="M6.7 9.3a2.7 2.7 0 0 0 3.9.1l1.6-1.6a2.7 2.7 0 0 0-3.9-3.9L7.4 4.8" />
+    <path d="M9.3 6.7a2.7 2.7 0 0 0-3.9-.1L3.8 8.2a2.7 2.7 0 0 0 3.9 3.9l.9-.9" />
+  </svg>,
+  // Identity/KYC — a face
+  <svg key="id" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <circle cx="8" cy="6.4" r="2.3" />
+    <path d="M3.6 13c.7-2.3 2.4-3.4 4.4-3.4s3.7 1.1 4.4 3.4" />
+  </svg>,
+  // Buy — a coin
+  <svg key="buy" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <circle cx="8" cy="8" r="5.3" />
+    <path d="M8 5.4v5.2M6.3 6.4c0-.8.8-1.4 1.7-1.4s1.7.5 1.7 1.2c0 1.6-3.4.9-3.4 2.5 0 .7.8 1.2 1.7 1.2s1.7-.5 1.7-1.3" />
+  </svg>,
+  // Evidence — a document
+  <svg key="ev" viewBox="0 0 16 16" className="h-[13px] w-[13px] fill-none stroke-current stroke-[1.4]">
+    <path d="M4.5 2h5L13 4.5V14a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5V2.5A.5.5 0 0 1 4.5 2Z" />
+    <path d="M9.3 2v2.6H12" />
+    <path d="M5.6 8h4.8M5.6 10.4h4.8" />
+  </svg>,
+];
+
 // Account ids are fetched from GET /api/health on mount, never hard-coded: the
 // ids differ per environment and per .env, and an invented id fails as
 // TOKEN_NOT_ASSOCIATED, which reads like a backend bug when the account simply
@@ -159,14 +192,45 @@ export function BuyerView() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-3 border-b border-[var(--border)] pb-4">
+    <div className="buyer-view flex flex-col gap-5">
+      <div className="seller-hero">
         <div className="flex items-end justify-between gap-3">
-          <h2 className="text-[22px] font-semibold tracking-[-0.03em]">Buyer</h2>
+          <div>
+            <h2 className="font-display text-[34px] font-semibold leading-[1.02] tracking-[-0.02em]">
+              Buyer <span className="seller-hero-accent">flow</span>
+            </h2>
+            <p className="mt-2 max-w-[46ch] text-[13px] leading-relaxed text-[var(--muted)]">
+              Resolve the property from ENS, prove KYC-eligible identity, then settle a transfer on
+              Hedera.
+            </p>
+            <div className="seller-live-badge" aria-hidden="true">
+              <span className="seller-live-dot" />
+              Protocol live · Hedera testnet
+            </div>
+          </div>
           <StepIndicator steps={STEPS} activeIndex={step} />
+        </div>
+
+        <div className="seller-flow" aria-hidden="true">
+          {FLOW_LABELS.map((label, i) => (
+            <div key={label} className="contents">
+              <div className={`seller-flow-node ${i < step ? "is-done" : i === step ? "is-active" : ""}`}>
+                <span className="seller-flow-dot">
+                  {i === step && <span className="seller-flow-glow" />}
+                  <span className="seller-flow-dot-inner">{i < step ? "✓" : FLOW_ICONS[i]}</span>
+                </span>
+                <span className="seller-flow-label">{label}</span>
+              </div>
+              {i < FLOW_LABELS.length - 1 && (
+                <span className={`seller-flow-line ${i < step ? "is-done" : ""}`} />
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
+      <div className="seller-workspace">
+      <div className="buyer-helper-card">
       <ActionCard
         title="Demo helpers"
         description="Seed PROP-001 (the KYC-denied and secondary-fee golden scenes run on top of it)."
@@ -220,7 +284,9 @@ export function BuyerView() {
           state survive.
         </p>
       </ActionCard>
+      </div>
 
+      <div className={`seller-step ${step > 0 ? "is-complete" : "is-active"}`}>
       <ActionCard
         title="0. Pick a property"
         description="Golden scenes run on PROP-001; type any live property id."
@@ -287,7 +353,9 @@ export function BuyerView() {
           </div>
         )}
       </ActionCard>
+      </div>
 
+      <div className={`seller-step ${step > 1 ? "is-complete" : step === 1 ? "is-active" : "is-upcoming"}`}>
       <ActionCard
         title="1-2. Pick an account + Association"
         description="buyer1/buyer2 are KYC'd test accounts; nokyc is deliberately un-KYC'd."
@@ -329,7 +397,9 @@ export function BuyerView() {
           Being associated does not grant a right to buy — only KYC does.
         </p>
       </ActionCard>
+      </div>
 
+      <div className={`seller-step ${step > 2 ? "is-complete" : step === 2 ? "is-active" : "is-upcoming"}`}>
       <ActionCard
         title="3. Identity Check → KYC"
         description="World Identity confirms a unique human over 18; a TokenGrantKycTransaction fires server-side."
@@ -363,7 +433,9 @@ export function BuyerView() {
         )}
         <PrivacyNote>Only age≥18 is requested; no name, address, nationality, or document image is collected, and the raw proof is never stored.</PrivacyNote>
       </ActionCard>
+      </div>
 
+      <div className={`seller-step ${step > 3 ? "is-complete" : step === 3 ? "is-active" : "is-upcoming"}`}>
       <ActionCard
         title="4. Buy"
         description="primary: fresh property (treasury exemption, no fee) · secondary: buyer1→buyer2 (2% fee above 50 shares — below that the 1-share floor dominates) · nokyc: deliberate rejection"
@@ -484,6 +556,7 @@ export function BuyerView() {
           </div>
         )}
       </ActionCard>
+      </div>
 
       {error && (
         <ErrorCard
@@ -499,6 +572,7 @@ export function BuyerView() {
           }
         />
       )}
+      </div>
     </div>
   );
 }
