@@ -102,6 +102,33 @@ async function checkServer() {
   if (seeded >= 2) pass('demo state loaded', `${seeded} properties in the store`)
   else fail('store is empty or partial', `${seeded} properties — run POST /api/seed`)
 
+  // Counting properties is not the same as being able to run the flow.
+  //
+  // The seller column starts on PROP-002, and /api/attest refuses a submission against a
+  // property that is already TOKENIZED — so a leftover PROP-002 from an earlier run kills
+  // step 2 of the demo with a red card before anything else happens. This check passed
+  // happily on exactly that state: the store had four properties and one of them was the
+  // one the demo was about to need.
+  const liveFlowId = process.env.DEMO_PROPERTY_ID?.trim() || 'PROP-002'
+  const probe = await fetch(`${base}/api/audit?propertyId=${encodeURIComponent(liveFlowId)}`, {
+    signal: AbortSignal.timeout(15_000),
+  }).catch(() => null)
+  const probeBody = probe && probe.ok ? await probe.json().catch(() => null) : null
+  const alreadyMinted = Boolean(
+    probeBody &&
+      Array.isArray(probeBody.events) &&
+      (probeBody.links?.token ?? null) !== null,
+  )
+  if (!alreadyMinted) {
+    pass(`${liveFlowId} is free for the live flow`)
+  } else {
+    warn(
+      `${liveFlowId} already carries a token`,
+      'the store may still hold it as TOKENIZED, and /api/attest refuses to replace the ' +
+        'documents of a tokenized property — run `npm run stage`, or use a different id',
+    )
+  }
+
   // A dropped event means the trail has a hole in it and the timeline will be missing a
   // step. It has happened twice, both times found by accident; this is what turns it into
   // something the pre-stage check tells you about.
