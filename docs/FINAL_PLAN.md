@@ -60,6 +60,18 @@ atar.
    "Proof of a live human, without a document upload" olarak düzeltilecek. Eski hâli World
    katmanının varlık sebebini yalanlıyor gibi okunuyor.
 
+### ETHGlobal'in bağlayıcı kuralları
+
+Formun kendisi bunları yazıyor, üçü de zorunlu:
+
+- **Video 2-4 dakika.** Alt sınır da bağlayıcı — finalist ödüllerine başvurmak için 2
+  dakikanın altına düşmemeli. Senaryo 3 dakikayı hedefliyor, iki yönde de payımız var.
+- **En az 720p, net ses, müzik yok.** `Cmd+Shift+5` zaten 1080p+ kaydeder. Ama
+  **Options → Microphone**'dan cihazını seçmeyi unutma; varsayılan "None" ve bunu atlarsan
+  sessiz video çekip baştan başlarsın. Asıl çekimden önce 10 saniyelik deneme çek ve izle.
+- **Sık commit, halka açık repo.** Jüri kodu elle inceliyor. Bundan sonra küçük ve sık commit
+  at — video linki ayrı, ekran görüntüleri ayrı.
+
 ### 08:50 · Demo videosu (60 dk) — Akif
 
 Senaryo `docs/DEMO_VIDEO.md`'de hazır, 8 sahne, hedef 3 dakika.
