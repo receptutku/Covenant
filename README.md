@@ -1,4 +1,6 @@
-# Covenant
+<p align="center">
+  <img src="public/logo-lockup.png" alt="Covenant" width="360">
+</p>
 
 **Privacy-Preserving Real Estate Verification** · ETHGlobal Lisbon 2026
 
