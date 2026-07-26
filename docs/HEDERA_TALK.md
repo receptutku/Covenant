@@ -1,6 +1,6 @@
 # Hedera Standı — Konuşma Metni
 
-_PPREV · ETHGlobal Lisbon 2026 · Akif + Recep_
+_Covenant · ETHGlobal Lisbon 2026 · Akif + Recep_
 
 Her bölümde: **İngilizce söyleyeceğin cümle**, altında **Türkçe açıklama**, gerektiğinde
 **neden bu cümle** notu.
@@ -63,14 +63,14 @@ akışın tamamından daha güçlü kanıtlıyor.
 
 ## AÇILIŞ (30 saniye)
 
-> **"Hi — we're PPREV, fractional real estate on Hedera. Two rules define the whole**
+> **"Hi — we're Covenant, fractional real estate on Hedera. Two rules define the whole**
 > **protocol: no token exists until a human has verified the property documents, and no**
 > **share can reach a wallet that hasn't proven eligibility.**
 >
 > **The part we'd like your opinion on is that the second rule isn't enforced by our code.**
 > **It's enforced by Hedera. Can I show you three transactions?"**
 
-**Türkçe:** Merhaba, biz PPREV — Hedera üzerinde kesirli gayrimenkul. Tüm protokolü iki kural
+**Türkçe:** Merhaba, biz Covenant — Hedera üzerinde kesirli gayrimenkul. Tüm protokolü iki kural
 tanımlıyor: bir insan mülk belgelerini doğrulamadan token oluşmuyor, ve uygunluğunu
 kanıtlamamış bir cüzdana pay ulaşamıyor. Görüşünüzü almak istediğimiz kısım şu: ikinci kuralı
 bizim kodumuz uygulamıyor, Hedera uyguluyor. Size üç işlem gösterebilir miyim?

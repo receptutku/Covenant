@@ -134,7 +134,7 @@ export default function Home() {
           <div className="relative z-10 flex flex-col gap-4 px-5 py-5 sm:px-7 sm:py-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h1 className="font-display text-[30px] font-semibold leading-none tracking-[-0.01em] sm:text-[36px]">PPREV</h1>
+                <h1 className="font-display text-[30px] font-semibold leading-none tracking-[-0.01em] sm:text-[36px]">Covenant</h1>
                 <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[var(--muted)]">
                   A fractional real-estate protocol: no token without a verified property, no share without proof
                   of eligibility.

@@ -1,6 +1,6 @@
 # World Identity Check — Feedback
 
-**Project:** PPREV — Privacy-Preserving Real Estate Verification
+**Project:** Covenant — privacy-preserving real estate verification
 **Actions:** `verify-buyer`, `verify-tenant` · **Environment:** staging · **App:** `app_50e89a92…`
 
 ---

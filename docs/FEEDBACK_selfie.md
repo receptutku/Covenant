@@ -1,6 +1,6 @@
 # World Selfie Check — Feedback
 
-**Project:** PPREV — Privacy-Preserving Real Estate Verification
+**Project:** Covenant — privacy-preserving real estate verification
 **Action:** `onboard-seller` · **Environment:** staging · **App:** `app_50e89a92…`
 
 ---

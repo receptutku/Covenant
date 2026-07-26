@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PPREV — Privacy-Preserving Real Estate Verification",
+  title: "Covenant — privacy-preserving real estate verification",
   description:
     "Prove a property claim, a person, and a payment on Hedera without publishing the documents, the identity, or the price.",
 };

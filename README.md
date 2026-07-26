@@ -1,4 +1,4 @@
-# PPREV
+# Covenant
 
 **Privacy-Preserving Real Estate Verification** · ETHGlobal Lisbon 2026
 
@@ -7,6 +7,13 @@ property ownership has been verified and counterparty eligibility has been prove
 which identity, verification, and compliance decisions are written on-chain without leaking
 personal data. One core, two modes: **sale** (fractional shares) and **rental** (escrowed
 deposit).
+
+A *covenant* is the clause that runs with the land — it binds every future owner, not just
+the one who signed it. That is the whole design goal here: the rules travel with the asset
+instead of living in the company that sold it. `PPREV` remains the protocol's internal
+codename and appears in the signed domain separators (`PPREV_DOC_V1`,
+`PPREV_OWNERSHIP_V1`) and in on-chain artifacts already minted on testnet; those strings are
+part of what has been signed and cannot be rewritten after the fact.
 
 > 🚧 Hackathon in progress. This README is split into two halves — to avoid conflicts, each of
 > us writes only in our own half.
@@ -23,7 +30,7 @@ property is real and belongs to the person selling it, and that the people you a
 with are allowed to be there. The usual answer is a company that has verified everyone and
 promises it did — and a database of passport scans waiting for a breach.
 
-PPREV replaces both promises with checks that hold without us.
+Covenant replaces both promises with checks that hold without us.
 
 A property cannot be tokenized until a human reviewer signs an attestation over its
 documents; change one character and the mint refuses. A buyer cannot receive shares until

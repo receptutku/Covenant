@@ -1,4 +1,4 @@
-# Mentor & Sponsor Conversation Plan — PPREV
+# Mentor & Sponsor Conversation Plan — Covenant
 
 _ETHGlobal Lisbon 2026 · Akif + Recep_
 
@@ -30,7 +30,7 @@ Eğer wifi kötüyse **B planı**: ekran görüntüleri `docs/img/` klasöründe
 
 ## 1. 30 saniyelik açılış — herkese aynısını söyle
 
-> **"Hi — we're building PPREV, fractional real-estate on Hedera.**
+> **"Hi — we're building Covenant, fractional real-estate on Hedera.**
 > **The idea is simple: no token exists until a human has verified the property documents,**
 > **and no share can move to a wallet that hasn't proven eligibility.**
 > **The interesting part is that the second rule is enforced by Hedera itself, not by our**

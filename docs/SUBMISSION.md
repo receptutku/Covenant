@@ -1,4 +1,4 @@
-# PPREV — ETHGlobal Lisbon 2026 submission
+# Covenant — ETHGlobal Lisbon 2026 submission
 
 Text for the submission form. Each section maps to a field; paste as-is.
 
@@ -18,7 +18,11 @@ property is real and belongs to the person selling it, and that the counterparti
 allowed to be there. The industry's answer is a company that has verified everyone and
 promises it did, plus a database of passport scans waiting for a breach.
 
-PPREV replaces both promises with checks that survive us.
+Covenant replaces both promises with checks that survive us. The name is the point: a
+covenant is the clause that runs with the land, binding every future owner rather than the
+one who signed it. (`PPREV` is the protocol's internal codename and survives in the signed
+domain separators and in artifacts already on testnet — those strings are part of what has
+been signed.)
 
 **A property cannot be tokenized until a human reviewer signs an attestation** over its
 documents — Ed25519, binding `{propertyId, seller, documentRoot, expiry}` into one payload.
@@ -181,7 +185,7 @@ finds a limitation we hid discounts everything else we claimed.
 in server memory and is lost on restart. That is a scope decision, and the precise version of
 it matters more than the label.
 
-A production PPREV *does* have a database. It does not have the documents in it. The whole
+A production Covenant *does* have a database. It does not have the documents in it. The whole
 argument of this project is that the status quo leaves "a database of passport scans waiting
 for a breach", so the answer to durability is not to build one and dump the deeds into it —
 it is to persist the state machine, the commitments and the roots, and leave the bytes with
